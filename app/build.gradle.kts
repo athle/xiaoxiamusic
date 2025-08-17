@@ -45,7 +45,7 @@ android {
 
 dependencies {
     // Android 4.4兼容依赖 - 使用安卓15兼容版本
-    implementation("androidx.appcompat:appcompat:1.6.1")
+    implementation("androidx.appcompat:appcompat:1.4.2")
     implementation("androidx.core:core:1.12.0")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     // 移除Material Design依赖，使用原生Android组件

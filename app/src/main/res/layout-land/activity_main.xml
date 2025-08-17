@@ -178,7 +178,7 @@
                         android:layout_height="48dp"
                         android:layout_marginStart="8dp"
                         android:layout_marginEnd="8dp"
-                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:background="@drawable/button_control_background"
                         android:src="@android:drawable/ic_media_play" />
 
                     <ImageButton

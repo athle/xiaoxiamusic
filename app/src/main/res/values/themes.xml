@@ -6,14 +6,14 @@
         <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
         <item name="colorAccent">@color/colorAccent</item>
         
-        <!-- 安卓15字体兼容性设置 -->
-        <item name="android:fontFamily">sans-serif</item>
-        <item name="fontFamily">sans-serif</item>
+        <!-- 安卓4.4字体兼容性设置 - 禁用字体家族 -->
+        <item name="android:fontFamily">@null</item>
+        <item name="fontFamily">@null</item>
     </style>
     
-    <!-- 安卓15兼容性主题 -->
+    <!-- 安卓4.4兼容性主题 -->
     <style name="Theme.XiaoxiaMusic.Compat" parent="Theme.XiaoxiaMusic">
-        <!-- 禁用可能导致问题的字体设置 -->
+        <!-- 完全禁用可能导致问题的字体设置 -->
         <item name="android:fontFamily">@null</item>
         <item name="fontFamily">@null</item>
     </style>

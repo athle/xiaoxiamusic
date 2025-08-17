@@ -1,6 +1,10 @@
 package com.maka.xiaoxia
 
 import android.app.Service
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -11,6 +15,7 @@ import android.os.IBinder
 import android.util.Log
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
+import android.os.Build
 import java.io.IOException
 
 class MusicService : Service() {
@@ -28,6 +33,9 @@ class MusicService : Service() {
         const val ACTION_PREVIOUS = "com.maka.xiaoxia.action.PREVIOUS"
         const val ACTION_UPDATE_WIDGET = "com.maka.xiaoxia.action.UPDATE_WIDGET"
         const val PREF_NAME = "music_service_prefs"
+        
+        private const val NOTIFICATION_CHANNEL_ID = "music_service_channel"
+        private const val NOTIFICATION_ID = 1
     }
 
     override fun onCreate() {
@@ -35,6 +43,9 @@ class MusicService : Service() {
         Log.d("MusicService", "服务创建")
         
         sharedPref = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        
+        // 创建通知渠道
+        createNotificationChannel()
         
         // 初始化MediaPlayer
         mediaPlayer = MediaPlayer()
@@ -50,6 +61,9 @@ class MusicService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d("MusicService", "服务启动: ${intent?.action}")
+        
+        // 启动前台服务
+        startForegroundNotification()
         
         // 处理启动意图中的动作
         intent?.action?.let { action ->
@@ -188,7 +202,10 @@ class MusicService : Service() {
             
             Log.d("MusicService", "开始播放: ${song.title}")
             
-            // 通知主界面更新
+            // 更新通知
+            updateNotification()
+            
+            // 更新小组件
             updateWidget()
             
         } catch (e: IOException) {
@@ -201,12 +218,24 @@ class MusicService : Service() {
         mediaPlayer?.pause()
         isPlaying = false
         Log.d("MusicService", "暂停播放")
+        
+        // 更新通知
+        updateNotification()
+        
+        // 更新小组件
+        updateWidget()
     }
 
     private fun resumeMusic() {
         mediaPlayer?.start()
         isPlaying = true
         Log.d("MusicService", "继续播放")
+        
+        // 更新通知
+        updateNotification()
+        
+        // 更新小组件
+        updateWidget()
     }
 
     private fun playNextInternal() {
@@ -223,13 +252,125 @@ class MusicService : Service() {
         playMusicInternal(currentSongIndex)
     }
 
+
+    
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val name = "音乐播放"
+            val descriptionText = "音乐播放控制"
+            val importance = NotificationManager.IMPORTANCE_LOW
+            val channel = NotificationChannel(NOTIFICATION_CHANNEL_ID, name, importance).apply {
+                description = descriptionText
+            }
+            
+            val notificationManager: NotificationManager =
+                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(channel)
+        }
+    }
+    
+    private fun startForegroundNotification() {
+        val notificationIntent = Intent(this, MainActivity::class.java)
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        val playPauseIntent = Intent(this, MusicService::class.java).apply {
+            action = ACTION_PLAY_PAUSE
+        }
+        val playPausePendingIntent = PendingIntent.getService(
+            this, 1, playPauseIntent, PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        val nextIntent = Intent(this, MusicService::class.java).apply {
+            action = ACTION_NEXT
+        }
+        val nextPendingIntent = PendingIntent.getService(
+            this, 2, nextIntent, PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        val prevIntent = Intent(this, MusicService::class.java).apply {
+            action = ACTION_PREVIOUS
+        }
+        val prevPendingIntent = PendingIntent.getService(
+            this, 3, prevIntent, PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        val songTitle = if (songList.isNotEmpty() && currentSongIndex < songList.size) {
+            songList[currentSongIndex].title
+        } else {
+            "未选择歌曲"
+        }
+        
+        val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, NOTIFICATION_CHANNEL_ID)
+        } else {
+            Notification.Builder(this)
+        }
+            .setContentTitle("正在播放")
+            .setContentText(songTitle)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .addAction(R.drawable.ic_play, "播放/暂停", playPausePendingIntent)
+            .addAction(R.drawable.ic_next, "下一首", nextPendingIntent)
+            .addAction(R.drawable.ic_previous, "上一首", prevPendingIntent)
+            .build()
+        
+        startForeground(NOTIFICATION_ID, notification)
+    }
+    
+    private fun updateNotification() {
+        if (songList.isNotEmpty() && currentSongIndex < songList.size) {
+            val song = songList[currentSongIndex]
+            
+            val notificationIntent = Intent(this, MainActivity::class.java)
+            val pendingIntent = PendingIntent.getActivity(
+                this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE
+            )
+            
+            val playPauseIntent = Intent(this, MusicService::class.java).apply {
+                action = ACTION_PLAY_PAUSE
+            }
+            val playPausePendingIntent = PendingIntent.getService(
+                this, 1, playPauseIntent, PendingIntent.FLAG_IMMUTABLE
+            )
+            
+            val nextIntent = Intent(this, MusicService::class.java).apply {
+                action = ACTION_NEXT
+            }
+            val nextPendingIntent = PendingIntent.getService(
+                this, 2, nextIntent, PendingIntent.FLAG_IMMUTABLE
+            )
+            
+            val prevIntent = Intent(this, MusicService::class.java).apply {
+                action = ACTION_PREVIOUS
+            }
+            val prevPendingIntent = PendingIntent.getService(
+                this, 3, prevIntent, PendingIntent.FLAG_IMMUTABLE
+            )
+            
+            val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Notification.Builder(this, NOTIFICATION_CHANNEL_ID)
+            } else {
+                Notification.Builder(this)
+            }
+                .setContentTitle(song.title)
+                .setContentText(song.artist)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentIntent(pendingIntent)
+                .setOngoing(true)
+                .addAction(R.drawable.ic_play, "播放/暂停", playPausePendingIntent)
+                .addAction(R.drawable.ic_next, "下一首", nextPendingIntent)
+                .addAction(R.drawable.ic_previous, "上一首", prevPendingIntent)
+                .build()
+            
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.notify(NOTIFICATION_ID, notification)
+        }
+    }
+    
     private fun updateWidget() {
-        // 先更新SharedPreferences，确保小组件能获取最新信息
-        savePlaybackState()
-        
-        // 记录更新时间戳，防止系统onUpdate覆盖
-        sharedPref.edit().putLong("last_widget_update_time", System.currentTimeMillis()).commit()
-        
         // 强制确保SharedPreferences已写入完成
         sharedPref.edit().commit()
         

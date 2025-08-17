@@ -1140,6 +1140,12 @@ class MainActivity : AppCompatActivity() {
     private fun startSeekBarUpdate() {
         stopSeekBarUpdate()
         
+        // 如果没有歌曲，不启动更新循环
+        if (songList.isEmpty()) {
+            Log.d(TAG, "没有歌曲，跳过进度条更新")
+            return
+        }
+        
         updateSeekBarRunnable = object : Runnable {
             override fun run() {
                 if (isServiceBound) {
@@ -1147,7 +1153,8 @@ class MainActivity : AppCompatActivity() {
                         val currentPosition = service.getCurrentPosition()
                         val duration = service.getDuration()
                         
-                        if (duration > 0) {
+                        // 只在有有效duration时更新UI
+                        if (duration > 0 && currentSongIndex >= 0 && currentSongIndex < songList.size) {
                             val progress = (currentPosition * 100) / duration
                             seekBar?.progress = progress
                             currentTimeText?.text = formatTime(currentPosition.toLong())
@@ -1155,6 +1162,10 @@ class MainActivity : AppCompatActivity() {
                             
                             // 更新歌词显示
                             lyricsView?.updateProgress(currentPosition.toLong())
+                        } else if (songList.isEmpty()) {
+                            // 如果歌曲列表为空，停止更新
+                            stopSeekBarUpdate()
+                            return
                         }
                         
                         // 同步播放状态
