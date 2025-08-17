@@ -1,0 +1,9 @@
+<resources xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Android 4.4兼容主题 - 无标题栏 -->
+    <style name="Theme.XiaoxiaMusic" parent="Theme.AppCompat.Light.NoActionBar">
+        <!-- 基础主题属性 -->
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+        <item name="colorAccent">@color/colorAccent</item>
+    </style>
+</resources>

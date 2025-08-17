@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@android:color/white">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="菜单"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:textColor="@android:color/black"
+        android:padding="16dp"
+        android:background="@android:color/darker_gray" />
+
+    <TextView
+        android:id="@+id/menu_home"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="主页"
+        android:textSize="16sp"
+        android:textColor="@android:color/black"
+        android:background="?attr/selectableItemBackground"
+        android:padding="16dp"
+        android:drawablePadding="16dp" />
+
+    <TextView
+        android:id="@+id/menu_playlist"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="播放列表"
+        android:textSize="16sp"
+        android:textColor="@android:color/black"
+        android:background="?attr/selectableItemBackground"
+        android:padding="16dp"
+        android:drawablePadding="16dp" />
+
+    <TextView
+        android:id="@+id/menu_settings"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="设置"
+        android:textSize="16sp"
+        android:textColor="@android:color/black"
+        android:background="?attr/selectableItemBackground"
+        android:padding="16dp"
+        android:drawablePadding="16dp" />
+
+    <TextView
+        android:id="@+id/menu_exit"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="退出"
+        android:textSize="16sp"
+        android:textColor="@android:color/black"
+        android:background="?attr/selectableItemBackground"
+        android:padding="16dp"
+        android:drawablePadding="16dp" />
+
+</LinearLayout>

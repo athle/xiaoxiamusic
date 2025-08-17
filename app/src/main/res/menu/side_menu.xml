@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <group android:checkableBehavior="single">
+        <item
+        android:id="@+id/nav_all_songs"
+        android:icon="@android:drawable/ic_media_play"
+        android:title="所有歌曲" />
+    <item
+        android:id="@+id/nav_playlists"
+        android:icon="@android:drawable/ic_menu_agenda"
+        android:title="播放列表" />
+    </group>
+
+    <group android:checkableBehavior="none">
+        <item
+            android:id="@+id/nav_settings"
+            android:icon="@android:drawable/ic_menu_preferences"
+            android:title="设置" />
+        <item
+            android:id="@+id/nav_about"
+            android:icon="@android:drawable/ic_menu_info_details"
+            android:title="关于" />
+    </group>
+</menu>
