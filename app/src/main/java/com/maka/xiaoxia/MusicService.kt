@@ -255,6 +255,13 @@ class MusicService : Service() {
         val uiUpdateIntent = Intent("com.maka.xiaoxia.UPDATE_UI").apply {
             putExtra("current_song_index", currentSongIndex)
             putExtra("is_playing", isPlaying)
+            putExtra("current_title", currentSong?.title ?: "未知歌曲")
+            putExtra("current_artist", currentSong?.artist ?: "未知艺术家")
+            putExtra("current_album", currentSong?.album ?: "未知专辑")
+            putExtra("current_path", currentSong?.path ?: "")
+            putExtra("current_album_id", currentSong?.albumId ?: 0L)
+            putExtra("current_duration", currentSong?.duration ?: 0L)
+            putExtra("song_count", songList.size)
         }
         sendBroadcast(uiUpdateIntent)
         Log.d("MusicService", "已发送UPDATE_UI广播给MainActivity")

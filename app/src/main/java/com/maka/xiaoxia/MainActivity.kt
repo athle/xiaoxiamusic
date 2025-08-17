@@ -1153,6 +1153,7 @@ class MainActivity : AppCompatActivity() {
     
     private fun unregisterBroadcastReceiver() {
         try {
+            // 只在销毁时真正注销广播接收器
             // 注销音乐控制广播接收器
             if (isReceiverRegistered && musicControlReceiver != null) {
                 try {
@@ -1347,26 +1348,61 @@ class MainActivity : AppCompatActivity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
                 "com.maka.xiaoxia.UPDATE_UI" -> {
-                    // 收到UI更新广播，从服务获取最新状态
+                    // 收到UI更新广播，优先使用广播中的数据
                     Log.d(TAG, "收到UPDATE_UI广播，准备更新UI")
-                    if (isServiceBound) {
+                    
+                    // 从广播获取完整信息
+                    val songIndex = intent.getIntExtra("current_song_index", -1)
+                    val isPlaying = intent.getBooleanExtra("is_playing", false)
+                    val songTitle = intent.getStringExtra("current_title") ?: ""
+                    val songArtist = intent.getStringExtra("current_artist") ?: ""
+                    val songAlbum = intent.getStringExtra("current_album") ?: ""
+                    val songPath = intent.getStringExtra("current_path") ?: ""
+                    val songAlbumId = intent.getLongExtra("current_album_id", 0L)
+                    val songDuration = intent.getLongExtra("current_duration", 0L)
+                    val songCount = intent.getIntExtra("song_count", 0)
+                    
+                    Log.d(TAG, "UPDATE_UI广播数据: 索引=$songIndex, 标题=$songTitle, 播放=$isPlaying")
+                    
+                    if (songIndex >= 0 && songIndex < songList.size) {
+                        // 使用广播中的数据更新状态
+                        currentSongIndex = songIndex
+                        this@MainActivity.isPlaying = isPlaying
+                        
+                        // 创建新的Song对象更新当前歌曲信息
+                        val updatedSong = Song(
+                            id = songList[songIndex].id,
+                            title = songTitle,
+                            artist = songArtist,
+                            album = songAlbum,
+                            duration = songDuration,
+                            path = songPath,
+                            albumId = songAlbumId
+                        )
+                        
+                        // 更新歌曲列表中的对应位置
+                        songList[songIndex] = updatedSong
+                        Log.d(TAG, "从广播同步歌曲信息: $songTitle")
+                        
+                        updateUI()
+                        Log.d(TAG, "UPDATE_UI广播处理完成，当前歌曲: $songTitle, 索引: $songIndex")
+                    } else if (isServiceBound) {
+                        // 广播数据不完整，尝试从服务获取
                         musicService?.let { service ->
                             currentSongIndex = service.getCurrentSongIndex()
                             this@MainActivity.isPlaying = service.isPlaying()
                             
-                            // 从服务获取当前歌曲的完整信息
                             val currentSong = service.getCurrentSong()
                             if (currentSong != null && currentSongIndex >= 0 && currentSongIndex < songList.size) {
-                                // 同步歌曲列表中的信息
                                 songList[currentSongIndex] = currentSong
                                 Log.d(TAG, "从服务同步歌曲信息: ${currentSong.title}")
                             }
                             
                             updateUI()
-                            Log.d(TAG, "UPDATE_UI广播处理完成，当前歌曲: ${currentSong?.title}, 索引: $currentSongIndex")
+                            Log.d(TAG, "UPDATE_UI广播处理完成（从服务），当前歌曲: ${currentSong?.title}, 索引: $currentSongIndex")
                         }
                     } else {
-                        // 服务未绑定，从SharedPreferences获取状态
+                        // 最后才从SharedPreferences获取
                         loadSavedData()
                         updateUI()
                         Log.d(TAG, "服务未绑定，从SharedPreferences更新状态")
@@ -1413,15 +1449,32 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         
-        // 暂停时清理广播接收器，避免内存泄漏
-        unregisterBroadcastReceiver()
+        // 保留广播接收器注册，确保即使App在后台也能收到更新
+        // 不再注销广播接收器，避免后台状态下无法同步
+        Log.d(TAG, "MainActivity暂停，但保留广播接收器")
     }
     
     override fun onResume() {
         super.onResume()
         
-        // 恢复时重新注册广播接收器
+        // 确保广播接收器已注册
         registerBroadcastReceiver()
+        
+        // 主动从服务同步当前状态
+        if (isServiceBound) {
+            musicService?.let { service ->
+                currentSongIndex = service.getCurrentSongIndex()
+                this@MainActivity.isPlaying = service.isPlaying()
+                
+                val currentSong = service.getCurrentSong()
+                if (currentSong != null && currentSongIndex >= 0 && currentSongIndex < songList.size) {
+                    songList[currentSongIndex] = currentSong
+                }
+                
+                updateUI()
+                Log.d(TAG, "onResume时主动同步状态，当前歌曲: ${currentSong?.title}")
+            }
+        }
     }
     
     override fun onStop() {
@@ -1452,7 +1505,7 @@ class MainActivity : AppCompatActivity() {
         
         // 清理所有资源，防止内存泄漏
         try {
-            // 注销广播接收器
+            // 只在真正销毁时注销广播接收器
             unregisterBroadcastReceiver()
             
             // 解绑服务
