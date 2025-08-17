@@ -227,6 +227,12 @@ class MusicService : Service() {
         // 先更新SharedPreferences，确保小组件能获取最新信息
         savePlaybackState()
         
+        // 记录更新时间戳，防止系统onUpdate覆盖
+        sharedPref.edit().putLong("last_widget_update_time", System.currentTimeMillis()).commit()
+        
+        // 强制确保SharedPreferences已写入完成
+        sharedPref.edit().commit()
+        
         val currentSong = songList.getOrNull(currentSongIndex)
         
         // 创建广播数据
@@ -239,17 +245,25 @@ class MusicService : Service() {
             putExtra("current_album", currentSong?.album ?: "")
             putExtra("current_lyrics", currentSong?.lyrics ?: "")
             putExtra("current_song_index", currentSongIndex)
+            
+            // 直接传递封面数据，避免从SharedPreferences读取的延迟
+            putExtra("cover_path", currentSong?.path ?: "")
+            putExtra("cover_album_id", currentSong?.albumId ?: 0L)
         }
         
         // 发送广播给所有接收者（包括MainActivity和小组件）
         sendBroadcast(broadcastData)
         Log.d("MusicService", "已发送UPDATE_WIDGET广播，当前歌曲: ${currentSong?.title}, 索引: $currentSongIndex")
         
-        // 额外发送一个系统广播确保小组件更新
-        val widgetUpdateIntent = Intent(AppWidgetManager.ACTION_APPWIDGET_UPDATE).apply {
-            component = ComponentName(this@MusicService, MusicWidgetProvider::class.java)
-        }
-        sendBroadcast(widgetUpdateIntent)
+        // 延迟发送系统广播，确保数据已完全写入，但避免与系统onUpdate冲突
+        android.os.Handler().postDelayed({
+            val widgetUpdateIntent = Intent(AppWidgetManager.ACTION_APPWIDGET_UPDATE).apply {
+                component = ComponentName(this@MusicService, MusicWidgetProvider::class.java)
+                putExtra("skip_if_recent_update", true)  // 标记这是延迟更新
+            }
+            sendBroadcast(widgetUpdateIntent)
+            Log.d("MusicService", "延迟发送系统小组件更新广播")
+        }, 200)
         
         // 发送一个专门的UI更新广播给MainActivity
         val uiUpdateIntent = Intent("com.maka.xiaoxia.UPDATE_UI").apply {

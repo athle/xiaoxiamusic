@@ -1,0 +1,23 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "gradle",
+			"id": "d:\\android app\\maka\\xiaoxiamusicapp:buildapp",
+			"script": "app:build",
+			"description": "Assembles and tests this project.",
+			"group": "build",
+			"project": "app",
+			"buildFile": "D:\\android app\\maka\\xiaoxiamusic\\app\\build.gradle.kts",
+			"rootProject": "xiaoxiamusic",
+			"projectFolder": "d:\\android app\\maka\\xiaoxiamusic",
+			"workspaceFolder": "d:\\android app\\maka\\xiaoxiamusic",
+			"args": "",
+			"javaDebug": false,
+			"problemMatcher": [
+				"$gradle"
+			],
+			"label": "gradle: app:build"
+		}
+	]
+}

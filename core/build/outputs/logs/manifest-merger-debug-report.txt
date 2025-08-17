@@ -1,16 +1,16 @@
 -- Merging decision tree log ---
 manifest
-ADDED from D:\android app\maka\xiaoxiamusic\core\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest14678398420051756082.xml:2:13-83
-INJECTED from D:\android app\maka\xiaoxiamusic\core\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest14678398420051756082.xml:2:13-83
+ADDED from D:\android app\maka\xiaoxiamusic\core\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest9107410756352410364.xml:2:13-83
+INJECTED from D:\android app\maka\xiaoxiamusic\core\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest9107410756352410364.xml:2:13-83
 	package
-		INJECTED from D:\android app\maka\xiaoxiamusic\core\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest14678398420051756082.xml
+		INJECTED from D:\android app\maka\xiaoxiamusic\core\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest9107410756352410364.xml
 	xmlns:android
-		ADDED from D:\android app\maka\xiaoxiamusic\core\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest14678398420051756082.xml:2:23-81
+		ADDED from D:\android app\maka\xiaoxiamusic\core\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest9107410756352410364.xml:2:23-81
 uses-sdk
-INJECTED from D:\android app\maka\xiaoxiamusic\core\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest14678398420051756082.xml reason: use-sdk injection requested
-INJECTED from D:\android app\maka\xiaoxiamusic\core\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest14678398420051756082.xml
-INJECTED from D:\android app\maka\xiaoxiamusic\core\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest14678398420051756082.xml
+INJECTED from D:\android app\maka\xiaoxiamusic\core\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest9107410756352410364.xml reason: use-sdk injection requested
+INJECTED from D:\android app\maka\xiaoxiamusic\core\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest9107410756352410364.xml
+INJECTED from D:\android app\maka\xiaoxiamusic\core\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest9107410756352410364.xml
 	android:targetSdkVersion
-		INJECTED from D:\android app\maka\xiaoxiamusic\core\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest14678398420051756082.xml
+		INJECTED from D:\android app\maka\xiaoxiamusic\core\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest9107410756352410364.xml
 	android:minSdkVersion
-		INJECTED from D:\android app\maka\xiaoxiamusic\core\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest14678398420051756082.xml
+		INJECTED from D:\android app\maka\xiaoxiamusic\core\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest9107410756352410364.xml
