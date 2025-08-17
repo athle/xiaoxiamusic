@@ -114,27 +114,44 @@ class MainActivity : AppCompatActivity() {
         }
         
         try {
-            // 确保状态栏可见（解决高版本安卓全屏问题）
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                // 使用WindowInsetsController API（Android 11+）
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    window.setDecorFitsSystemWindows(false)
-                    window.insetsController?.let { controller ->
-                        controller.show(android.view.WindowInsets.Type.statusBars())
-                        controller.setSystemBarsAppearance(
-                            0,
-                            android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
-                        )
+            // 延迟设置窗口属性，避免安卓15上的空指针异常
+            Handler(Looper.getMainLooper()).post {
+                try {
+                    // 确保状态栏可见（解决安卓15状态栏显示问题）
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        // 安卓15状态栏显示优化
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            try {
+                                // 确保内容不延伸到状态栏区域
+                                window.setDecorFitsSystemWindows(true)
+                                window.insetsController?.let { controller ->
+                                    // 确保状态栏可见
+                                    controller.show(android.view.WindowInsets.Type.statusBars())
+                                    // 设置状态栏图标颜色为深色（适合浅色主题）
+                                    controller.setSystemBarsAppearance(
+                                        android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
+                                        android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                                    )
+                                }
+                                // 设置状态栏背景色（使用主题主色调）
+                                window.statusBarColor = resources.getColor(R.color.colorPrimaryDark)
+                            } catch (e: Exception) {
+                                Log.d(TAG, "WindowInsetsController设置失败: ${e.message}")
+                                // 回退到兼容模式
+                                @Suppress("DEPRECATION")
+                                window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+                                window.statusBarColor = resources.getColor(R.color.colorPrimaryDark)
+                            }
+                        } else {
+                            // 兼容旧版本状态栏设置
+                            @Suppress("DEPRECATION")
+                            window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+                            window.statusBarColor = resources.getColor(R.color.colorPrimaryDark)
+                            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+                        }
                     }
-                } else {
-                    // 兼容旧版本
-                    @Suppress("DEPRECATION")
-                    window.decorView.systemUiVisibility = (
-                        View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
-                        View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                    )
-                    window.statusBarColor = android.graphics.Color.TRANSPARENT
-                    window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+                } catch (e: Exception) {
+                    Log.d(TAG, "窗口设置延迟执行失败: ${e.message}")
                 }
             }
             
@@ -151,8 +168,12 @@ class MainActivity : AppCompatActivity() {
             drawerLayout = findViewById(R.id.drawer_layout)
             
             // 设置底部控制区域的菜单按钮（横竖屏通用）
-            findViewById<ImageButton>(R.id.menu_button_control)?.setOnClickListener {
-                drawerLayout?.openDrawer(GravityCompat.START)
+            try {
+                findViewById<ImageButton>(R.id.menu_button_control)?.setOnClickListener {
+                    drawerLayout?.openDrawer(GravityCompat.START)
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "菜单按钮初始化失败: ${e.message}")
             }
             
             // 设置侧边菜单按钮
@@ -234,9 +255,13 @@ class MainActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "权限检查异常: ${e.message}")
-            // 确保在异常情况下也能安全处理
-            emptyView?.text = "初始化异常，请重启应用"
-            emptyView?.visibility = View.VISIBLE
+            // 安卓15上权限异常时不直接退出，给用户手动处理的机会
+            runOnUiThread {
+                emptyView?.text = "权限检查异常，请在系统设置中手动授予权限\n设置 > 应用 > 音乐播放器 > 权限"
+                emptyView?.visibility = View.VISIBLE
+                songListView?.visibility = View.GONE
+                Toast.makeText(this, "请在系统设置中手动授予权限", Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -352,7 +377,13 @@ class MainActivity : AppCompatActivity() {
                 addAction("com.maka.xiaoxia.PLAYBACK_COMPLETE")
                 addAction("com.maka.xiaoxia.action.UPDATE_WIDGET") // 添加对小组件更新广播的监听
             }
-            registerReceiver(uiUpdateReceiver, filter)
+            
+            // 安卓14+需要指定RECEIVER_EXPORTED或RECEIVER_NOT_EXPORTED
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(uiUpdateReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                registerReceiver(uiUpdateReceiver, filter)
+            }
             isReceiverRegistered = true
         }
     }
@@ -493,74 +524,79 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun setupSideMenu() {
-        // 检查是否存在按钮，避免空指针异常
-        findViewById<Button>(R.id.btn_home)?.setOnClickListener {
-            drawerLayout?.closeDrawer(GravityCompat.START)
-            // 主页功能已实现，无需额外操作
-        }
-        
-        findViewById<Button>(R.id.btn_playlist)?.setOnClickListener {
-            showPlaylistDialog()
-            drawerLayout?.closeDrawer(GravityCompat.START)
-        }
-        
-        findViewById<ImageButton>(R.id.btn_settings)?.setOnClickListener {
-            showScanSettingsDialog()
-            drawerLayout?.closeDrawer(GravityCompat.START)
-        }
-        
-        findViewById<ImageButton>(R.id.btn_exit)?.setOnClickListener {
-            AlertDialog.Builder(this)
-                .setTitle("退出应用")
-                .setMessage("确定要退出应用吗？")
-                .setPositiveButton("确定") { _, _ ->
-                    finish()
-                }
-                .setNegativeButton("取消", null)
-                .show()
-        }
-        
-        // 检查侧边菜单列表是否存在
-        val sideMenuList = findViewById<ListView>(R.id.side_menu_list)
-        if (sideMenuList != null) {
-            // 横屏布局使用ListView作为侧边菜单
-            val menuItems = listOf("主页", "播放列表", "设置", "退出")
-            val menuAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, menuItems)
-            sideMenuList.adapter = menuAdapter
+        try {
+            // 检查是否存在按钮，避免空指针异常
+            findViewById<Button>(R.id.btn_home)?.setOnClickListener {
+                drawerLayout?.closeDrawer(GravityCompat.START)
+                // 主页功能已实现，无需额外操作
+            }
             
-            sideMenuList.setOnItemClickListener { _, _, position, _ ->
-                when (position) {
-                    0 -> {
-                        // 主页
-                        drawerLayout?.closeDrawer(findViewById(R.id.side_menu))
+            findViewById<Button>(R.id.btn_playlist)?.setOnClickListener {
+                showPlaylistDialog()
+                drawerLayout?.closeDrawer(GravityCompat.START)
+            }
+            
+            findViewById<ImageButton>(R.id.btn_settings)?.setOnClickListener {
+                showScanSettingsDialog()
+                drawerLayout?.closeDrawer(GravityCompat.START)
+            }
+            
+            findViewById<ImageButton>(R.id.btn_exit)?.setOnClickListener {
+                AlertDialog.Builder(this)
+                    .setTitle("退出应用")
+                    .setMessage("确定要退出应用吗？")
+                    .setPositiveButton("确定") { _, _ ->
+                        finish()
                     }
-                    1 -> {
-                        // 播放列表
-                        showPlaylistDialog()
-                        drawerLayout?.closeDrawer(findViewById(R.id.side_menu))
-                    }
-                    2 -> {
-                        // 设置
-                        showScanSettingsDialog()
-                        drawerLayout?.closeDrawer(findViewById(R.id.side_menu))
-                    }
-                    3 -> {
-                        // 退出
-                        AlertDialog.Builder(this)
-                            .setTitle("退出应用")
-                            .setMessage("确定要退出应用吗？")
-                            .setPositiveButton("确定") { _, _ ->
-                                finish()
-                            }
-                            .setNegativeButton("取消", null)
-                            .show()
+                    .setNegativeButton("取消", null)
+                    .show()
+            }
+            
+            // 检查侧边菜单列表是否存在
+            val sideMenuList = findViewById<ListView>(R.id.side_menu_list)
+            if (sideMenuList != null) {
+                // 横屏布局使用ListView作为侧边菜单
+                val menuItems = listOf("主页", "播放列表", "设置", "退出")
+                val menuAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, menuItems)
+                sideMenuList.adapter = menuAdapter
+                
+                sideMenuList.setOnItemClickListener { _, _, position, _ ->
+                    when (position) {
+                        0 -> {
+                            // 主页
+                            drawerLayout?.closeDrawer(GravityCompat.START)
+                        }
+                        1 -> {
+                            // 播放列表
+                            showPlaylistDialog()
+                            drawerLayout?.closeDrawer(GravityCompat.START)
+                        }
+                        2 -> {
+                            // 设置
+                            showScanSettingsDialog()
+                            drawerLayout?.closeDrawer(GravityCompat.START)
+                        }
+                        3 -> {
+                            // 退出
+                            AlertDialog.Builder(this)
+                                .setTitle("退出应用")
+                                .setMessage("确定要退出应用吗？")
+                                .setPositiveButton("确定") { _, _ ->
+                                    finish()
+                                }
+                                .setNegativeButton("取消", null)
+                                .show()
+                        }
                     }
                 }
             }
+            
+            // 初始化播放列表显示
+            updatePlaylistDisplay()
+        } catch (e: Exception) {
+            Log.e(TAG, "侧边菜单设置失败: ${e.message}")
+            // 侧边菜单初始化失败不影响主功能
         }
-        
-        // 初始化播放列表显示
-        updatePlaylistDisplay()
     }
     
     private fun showPlaylistDialog() {
@@ -823,21 +859,35 @@ class MainActivity : AppCompatActivity() {
             lyricsView = findViewById(R.id.lyrics_view)
             playlistTitleText = findViewById(R.id.playlist_title)
             
-            // 初始化横屏底栏控件 - 这些可能不存在于某些布局中
-            songTitleControl = findViewById(R.id.song_title_control)
-            artistControl = findViewById(R.id.artist_control)
+            // 安全初始化横屏底栏控件 - 仅在横屏布局存在时获取
+            try {
+                songTitleControl = findViewById(R.id.song_title_control)
+                artistControl = findViewById(R.id.artist_control)
+            } catch (e: Exception) {
+                // 竖屏模式下这些视图不存在，忽略异常
+                Log.d(TAG, "横屏视图初始化失败: ${e.message}")
+                songTitleControl = null
+                artistControl = null
+            }
             
             // 设置播放控制按钮的点击监听器
             setupPlaybackControls()
             
             // 检查关键视图是否初始化成功
             if (songListView == null || emptyView == null) {
-                Log.e(TAG, "关键视图初始化失败")
-                return
+                Log.e(TAG, "关键视图初始化失败: songListView=${songListView}, emptyView=${emptyView}")
+                // 不返回，继续尝试运行
             }
+            
+            // 记录初始化状态
+            Log.d(TAG, "视图初始化完成: 共找到 ${songList?.size ?: 0} 个列表项")
         } catch (e: Exception) {
             Log.e(TAG, "视图初始化失败: ${e.message}")
-            return
+            Log.e(TAG, "异常详情: ${e.stackTraceToString()}")
+            // 在安卓15上，捕获异常但不退出，尝试继续运行
+            runOnUiThread {
+                Toast.makeText(this, "界面初始化遇到小问题，尝试继续运行...", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -897,9 +947,14 @@ class MainActivity : AppCompatActivity() {
             songTitleText?.text = song.title
             artistText?.text = song.artist
             
-            // 安全更新横屏底栏歌曲信息
-            songTitleControl?.text = song.title
-            artistControl?.text = song.artist
+            // 安全更新横屏底栏歌曲信息（仅在横屏布局存在时）
+            try {
+                songTitleControl?.text = song.title
+                artistControl?.text = song.artist
+            } catch (e: Exception) {
+                // 捕获可能的空指针异常，不影响主功能
+                Log.d(TAG, "横屏视图更新失败: ${e.message}")
+            }
             
             totalTimeText?.text = formatTime(song.duration)
             loadAlbumArt(song.albumId)

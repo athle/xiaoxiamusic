@@ -24,7 +24,10 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.XiaoxiaMusic"
-        android:requestLegacyExternalStorage="true">
+        android:requestLegacyExternalStorage="true"
+        android:enableOnBackInvokedCallback="true"
+        android:allowNativeHeapPointerTagging="false"
+        tools:targetApi="35">
         <activity
             android:name="com.maka.xiaoxia.MainActivity"
             android:exported="true">

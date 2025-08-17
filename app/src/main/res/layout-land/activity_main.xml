@@ -10,7 +10,8 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:background="@android:color/white">
+        android:background="@android:color/white"
+        android:fitsSystemWindows="true">
 
         <!-- 主要内容 -->
         <LinearLayout
@@ -190,6 +191,7 @@
 
                 <!-- 歌曲信息 -->
                 <LinearLayout
+                    android:id="@+id/song_info_layout"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
