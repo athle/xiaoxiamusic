@@ -506,6 +506,13 @@ class MainActivity : AppCompatActivity() {
                         // 保存新的音乐列表
                         preferenceHelper?.saveSongList(songList)
                         
+                        // 同步歌曲列表到服务
+                        saveSongsToServicePrefs()
+                        if (isServiceBound && musicService != null) {
+                            musicService?.setSongList(songList)
+                            Log.d(TAG, "已同步歌曲列表到服务，共 ${songList.size} 首歌曲")
+                        }
+                        
                         Log.d(TAG, "加载完成，共找到 ${songList.size} 首歌曲")
                     }
                     
@@ -804,17 +811,30 @@ class MainActivity : AppCompatActivity() {
 
     // 在MainActivity类中添加playSong方法
     fun playSong(position: Int) {
+        if (songList.isEmpty()) {
+            Log.e(TAG, "无法播放：歌曲列表为空")
+            Toast.makeText(this, "请先扫描音乐文件", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
         if (position >= 0 && position < songList.size) {
             currentSongIndex = position
             
             // 通过服务播放歌曲
             if (isServiceBound && musicService != null) {
+                // 确保服务有最新的歌曲列表
+                musicService?.setSongList(songList)
                 musicService?.playSong(position)
                 isPlaying = true
                 updatePlayPauseButton()
                 updateUI()
             } else {
                 // 服务未连接，先启动服务
+                Log.d(TAG, "服务未连接，先同步歌曲列表到服务")
+                
+                // 先保存歌曲列表到服务Prefs
+                saveSongsToServicePrefs()
+                
                 val serviceIntent = Intent(this, MusicService::class.java).apply {
                     action = "PLAY_SONG"
                     putExtra("song_index", position)
@@ -835,6 +855,8 @@ class MainActivity : AppCompatActivity() {
             
             // 更新小部件
             updateWidget()
+        } else {
+            Log.e(TAG, "无效的播放位置: $position，列表大小: ${songList.size}")
         }
     }
     
@@ -1192,27 +1214,37 @@ class MainActivity : AppCompatActivity() {
             override fun run() {
                 if (isServiceBound) {
                     musicService?.let { service ->
-                        val currentPosition = service.getCurrentPosition()
-                        val duration = service.getDuration()
-                        
-                        // 只在有有效duration时更新UI
-                        if (duration > 0 && currentSongIndex >= 0 && currentSongIndex < songList.size) {
-                            val progress = (currentPosition * 100) / duration
-                            seekBar?.progress = progress
-                            currentTimeText?.text = formatTime(currentPosition.toLong())
-                            totalTimeText?.text = formatTime(duration.toLong())
-                            
-                            // 更新歌词显示
-                            lyricsView?.updateProgress(currentPosition.toLong())
-                        } else if (songList.isEmpty()) {
-                            // 如果歌曲列表为空，停止更新
-                            stopSeekBarUpdate()
+                        // 检查MediaPlayer是否已准备就绪
+                        if (!service.isMediaPlayerReady()) {
+                            Log.d(TAG, "MediaPlayer未就绪，跳过进度更新")
+                            handler.postDelayed(this, 1000)
                             return
                         }
                         
-                        // 同步播放状态
-                        isPlaying = service.isPlaying()
-                        updatePlayPauseButton()
+                        try {
+                            val currentPosition = service.getCurrentPosition()
+                            val duration = service.getDuration()
+                            
+                            // 只在有有效duration时更新UI
+                            if (duration > 0 && currentSongIndex >= 0 && currentSongIndex < songList.size) {
+                                val progress = (currentPosition * 100) / duration
+                                seekBar?.progress = progress
+                                currentTimeText?.text = formatTime(currentPosition.toLong())
+                                totalTimeText?.text = formatTime(duration.toLong())
+                                
+                                // 更新歌词显示
+                                lyricsView?.updateProgress(currentPosition.toLong())
+                                
+                                // 同步播放状态
+                                isPlaying = service.isPlaying()
+                                updatePlayPauseButton()
+                            } else {
+                                // 如果歌曲列表为空，停止更新
+                                stopSeekBarUpdate()
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "更新进度时出错: ${e.message}")
+                        }
                     }
                 }
                 
@@ -1497,18 +1529,24 @@ class MainActivity : AppCompatActivity() {
                     } else if (isServiceBound) {
                         // 广播数据不完整，尝试从服务获取
                         musicService?.let { service ->
-                            currentSongIndex = service.getCurrentSongIndex()
-                            this@MainActivity.isPlaying = service.isPlaying()
-                            
-                            val currentSong = service.getCurrentSong()
-                            if (currentSong != null && currentSongIndex >= 0 && currentSongIndex < songList.size) {
-                                songList[currentSongIndex] = currentSong
-                                Log.d(TAG, "从服务同步歌曲信息: ${currentSong.title}")
+                                // 确保服务有最新的歌曲列表
+                                if (songList.isNotEmpty()) {
+                                    service.setSongList(songList)
+                                    Log.d(TAG, "服务绑定后同步歌曲列表，共 ${songList.size} 首")
+                                }
+                                
+                                currentSongIndex = service.getCurrentSongIndex()
+                                this@MainActivity.isPlaying = service.isPlaying()
+                                
+                                val currentSong = service.getCurrentSong()
+                                if (currentSong != null && currentSongIndex >= 0 && currentSongIndex < songList.size) {
+                                    songList[currentSongIndex] = currentSong
+                                    Log.d(TAG, "从服务同步歌曲信息: ${currentSong.title}")
+                                }
+                                
+                                updateUI()
+                                Log.d(TAG, "UPDATE_UI广播处理完成（从服务），当前歌曲: ${currentSong?.title}, 索引: $currentSongIndex")
                             }
-                            
-                            updateUI()
-                            Log.d(TAG, "UPDATE_UI广播处理完成（从服务），当前歌曲: ${currentSong?.title}, 索引: $currentSongIndex")
-                        }
                     } else {
                         // 最后才从SharedPreferences获取
                         loadSavedData()
@@ -1599,6 +1637,12 @@ class MainActivity : AppCompatActivity() {
                 Handler(Looper.getMainLooper()).postDelayed({
                     if (isServiceBound) {
                         musicService?.let { service ->
+                            // 确保服务有最新的歌曲列表
+                            if (songList.isNotEmpty()) {
+                                service.setSongList(songList)
+                                Log.d(TAG, "服务绑定后同步歌曲列表，共 ${songList.size} 首")
+                            }
+                            
                             currentSongIndex = service.getCurrentSongIndex()
                             this@MainActivity.isPlaying = service.isPlaying()
                             

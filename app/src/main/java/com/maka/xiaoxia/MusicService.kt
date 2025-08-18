@@ -11,6 +11,9 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.media.MediaPlayer
+import android.media.MediaMetadataRetriever
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.IBinder
 import android.util.Log
 import android.appwidget.AppWidgetManager
@@ -237,9 +240,12 @@ class MusicService : Service() {
     }
 
     // 添加服务控制接口
-    fun getCurrentPosition(): Int = mediaPlayer?.currentPosition ?: 0
-    fun getDuration(): Int = mediaPlayer?.duration ?: 0
+    fun getCurrentPosition(): Int = if (isMediaPlayerReady()) mediaPlayer?.currentPosition ?: 0 else 0
+    fun getDuration(): Int = if (isMediaPlayerReady()) mediaPlayer?.duration ?: 0 else 0
     fun isPlaying(): Boolean = mediaPlayer?.isPlaying ?: false
+    
+    // 检查MediaPlayer是否已准备就绪
+    fun isMediaPlayerReady(): Boolean = mediaPlayer != null && currentSongPath != null
     
     // 添加进度控制方法
     fun seekTo(position: Int) {
@@ -333,31 +339,75 @@ class MusicService : Service() {
         }
     }
     
+    private fun getAlbumArt(songPath: String): Bitmap? {
+        try {
+            val retriever = MediaMetadataRetriever()
+            try {
+                val file = java.io.File(songPath)
+                if (!file.exists() || !file.canRead()) {
+                    return null
+                }
+                
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    try {
+                        val fileDescriptor = java.io.FileInputStream(file).fd
+                        retriever.setDataSource(fileDescriptor)
+                    } catch (e: Exception) {
+                        retriever.setDataSource(songPath)
+                    }
+                } else {
+                    retriever.setDataSource(songPath)
+                }
+                
+                val art = retriever.embeddedPicture
+                return if (art != null && art.isNotEmpty()) {
+                    BitmapFactory.decodeByteArray(art, 0, art.size)
+                } else {
+                    null
+                }
+            } finally {
+                try {
+                    retriever.release()
+                } catch (e: Exception) {
+                    // 忽略释放异常
+                }
+            }
+        } catch (e: Exception) {
+            return null
+        }
+    }
+
     private fun startForegroundNotification() {
         val notificationIntent = Intent(this, MainActivity::class.java)
+        val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_IMMUTABLE
+        } else {
+            0
+        }
+        
         val pendingIntent = PendingIntent.getActivity(
-            this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE
+            this, 0, notificationIntent, pendingIntentFlags
         )
         
         val playPauseIntent = Intent(this, MusicService::class.java).apply {
             action = ACTION_PLAY_PAUSE
         }
         val playPausePendingIntent = PendingIntent.getService(
-            this, 1, playPauseIntent, PendingIntent.FLAG_IMMUTABLE
+            this, 1, playPauseIntent, pendingIntentFlags
         )
         
         val nextIntent = Intent(this, MusicService::class.java).apply {
             action = ACTION_NEXT
         }
         val nextPendingIntent = PendingIntent.getService(
-            this, 2, nextIntent, PendingIntent.FLAG_IMMUTABLE
+            this, 2, nextIntent, pendingIntentFlags
         )
         
         val prevIntent = Intent(this, MusicService::class.java).apply {
             action = ACTION_PREVIOUS
         }
         val prevPendingIntent = PendingIntent.getService(
-            this, 3, prevIntent, PendingIntent.FLAG_IMMUTABLE
+            this, 3, prevIntent, pendingIntentFlags
         )
         
         val songTitle = if (songList.isNotEmpty() && currentSongIndex < songList.size) {
@@ -366,19 +416,43 @@ class MusicService : Service() {
             "未选择歌曲"
         }
         
+        val songArtist = if (songList.isNotEmpty() && currentSongIndex < songList.size) {
+            songList[currentSongIndex].artist
+        } else {
+            "未知艺术家"
+        }
+        
+        val songPath = if (songList.isNotEmpty() && currentSongIndex < songList.size) {
+            songList[currentSongIndex].path
+        } else {
+            ""
+        }
+        
+        // 获取专辑封面
+        var albumArt: Bitmap? = null
+        if (!songPath.isEmpty()) {
+            albumArt = getAlbumArt(songPath)
+        }
+        
         val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, NOTIFICATION_CHANNEL_ID)
         } else {
             Notification.Builder(this)
         }
-            .setContentTitle("正在播放")
-            .setContentText(songTitle)
+            .setContentTitle(songTitle)
+            .setContentText(songArtist)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
+            .addAction(R.drawable.ic_previous, "上一首", prevPendingIntent)
             .addAction(R.drawable.ic_play, "播放/暂停", playPausePendingIntent)
             .addAction(R.drawable.ic_next, "下一首", nextPendingIntent)
-            .addAction(R.drawable.ic_previous, "上一首", prevPendingIntent)
+            .apply {
+                // 在安卓4.4+支持设置大图标显示专辑封面
+                albumArt?.let { bitmap ->
+                    setLargeIcon(bitmap)
+                }
+            }
             .build()
         
         startForeground(NOTIFICATION_ID, notification)
@@ -389,30 +463,39 @@ class MusicService : Service() {
             val song = songList[currentSongIndex]
             
             val notificationIntent = Intent(this, MainActivity::class.java)
+            val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PendingIntent.FLAG_IMMUTABLE
+            } else {
+                0
+            }
+            
             val pendingIntent = PendingIntent.getActivity(
-                this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE
+                this, 0, notificationIntent, pendingIntentFlags
             )
             
             val playPauseIntent = Intent(this, MusicService::class.java).apply {
                 action = ACTION_PLAY_PAUSE
             }
             val playPausePendingIntent = PendingIntent.getService(
-                this, 1, playPauseIntent, PendingIntent.FLAG_IMMUTABLE
+                this, 1, playPauseIntent, pendingIntentFlags
             )
             
             val nextIntent = Intent(this, MusicService::class.java).apply {
                 action = ACTION_NEXT
             }
             val nextPendingIntent = PendingIntent.getService(
-                this, 2, nextIntent, PendingIntent.FLAG_IMMUTABLE
+                this, 2, nextIntent, pendingIntentFlags
             )
             
             val prevIntent = Intent(this, MusicService::class.java).apply {
                 action = ACTION_PREVIOUS
             }
             val prevPendingIntent = PendingIntent.getService(
-                this, 3, prevIntent, PendingIntent.FLAG_IMMUTABLE
+                this, 3, prevIntent, pendingIntentFlags
             )
+            
+            // 获取专辑封面
+            val albumArt = getAlbumArt(song.path)
             
             val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 Notification.Builder(this, NOTIFICATION_CHANNEL_ID)
@@ -424,9 +507,15 @@ class MusicService : Service() {
                 .setSmallIcon(R.drawable.ic_notification)
                 .setContentIntent(pendingIntent)
                 .setOngoing(true)
-                .addAction(R.drawable.ic_play, "播放/暂停", playPausePendingIntent)
-                .addAction(R.drawable.ic_next, "下一首", nextPendingIntent)
                 .addAction(R.drawable.ic_previous, "上一首", prevPendingIntent)
+                .addAction(if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play, "播放/暂停", playPausePendingIntent)
+                .addAction(R.drawable.ic_next, "下一首", nextPendingIntent)
+                .apply {
+                    // 在安卓4.4+支持设置大图标显示专辑封面
+                    albumArt?.let { bitmap ->
+                        setLargeIcon(bitmap)
+                    }
+                }
                 .build()
             
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -495,9 +584,29 @@ class MusicService : Service() {
     
     // 公共接口供MainActivity调用
     fun playSong(index: Int) {
-        if (index in 0 until songList.size) {
-            currentSongIndex = index
-            playMusicInternal(index)
+        if (songList.isEmpty()) {
+            Log.e("MusicService", "无法播放：歌曲列表为空")
+            return
+        }
+        
+        if (index < 0 || index >= songList.size) {
+            Log.e("MusicService", "播放歌曲索引无效: $index, 列表大小: ${songList.size}")
+            return
+        }
+        
+        currentSongIndex = index
+        playMusicInternal(index)
+    }
+    
+    // 添加设置歌曲列表的方法
+    fun setSongList(newSongList: List<Song>) {
+        songList.clear()
+        songList.addAll(newSongList)
+        Log.d("MusicService", "更新歌曲列表，共 ${songList.size} 首歌曲")
+        
+        // 如果当前索引超出范围，重置为0
+        if (currentSongIndex >= songList.size) {
+            currentSongIndex = 0
         }
     }
     
@@ -538,11 +647,7 @@ class MusicService : Service() {
     
     fun getSongList(): List<Song> = songList
     
-    fun setSongList(newList: List<Song>) {
-        songList.clear()
-        songList.addAll(newList)
-        savePlaybackState()
-    }
+
     
     fun getCurrentSongIndex(): Int = currentSongIndex
     
