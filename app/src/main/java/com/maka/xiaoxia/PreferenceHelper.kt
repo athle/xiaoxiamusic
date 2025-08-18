@@ -71,6 +71,20 @@ class PreferenceHelper(context: Context) {
     fun clearAll() {
         prefs.edit().clear().apply()
     }
+    
+    fun savePlaybackState(songList: List<Song>, currentIndex: Int, position: Int, isPlaying: Boolean) {
+        saveSongList(songList)
+        saveCurrentSongIndex(currentIndex)
+        saveCurrentPosition(position)
+        saveIsPlaying(isPlaying)
+    }
+    
+    fun restorePlaybackState(): Triple<List<Song>, Int, Int> {
+        val songs = loadSongList()
+        val index = getCurrentSongIndex()
+        val position = getCurrentPosition()
+        return Triple(songs, index, position)
+    }
 
     fun getBoolean(key: String, defaultValue: Boolean): Boolean {
         return prefs.getBoolean(key, defaultValue)

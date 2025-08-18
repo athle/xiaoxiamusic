@@ -324,8 +324,29 @@ class MainActivity : AppCompatActivity() {
                 musicService?.setSongList(songList)
             }
             
-            // 更新UI显示
-            updateUI()
+            // 从服务获取最新状态，确保与后台操作同步
+            musicService?.let { service ->
+                // 获取最新的歌曲索引和播放状态
+                val latestIndex = service.getCurrentSongIndex()
+                val latestPlaying = service.isPlaying()
+                val latestSong = service.getCurrentSong()
+                
+                Log.d(TAG, "服务连接成功，获取最新状态: 索引=$latestIndex, 播放=$latestPlaying, 歌曲=${latestSong?.title}")
+                
+                // 更新本地状态
+                if (latestIndex >= 0 && latestIndex < songList.size) {
+                    currentSongIndex = latestIndex
+                    if (latestSong != null) {
+                        songList[latestIndex] = latestSong
+                    }
+                }
+                this@MainActivity.isPlaying = latestPlaying
+                
+                // 强制更新UI
+                updateUI()
+                Log.d(TAG, "服务连接后UI同步完成")
+            }
+            
             Log.d(TAG, "服务已连接")
         }
 
@@ -354,7 +375,20 @@ class MainActivity : AppCompatActivity() {
             songList.addAll(savedSongs)
             currentSongIndex = preferenceHelper?.getCurrentSongIndex() ?: 0
             isPlaying = preferenceHelper?.getIsPlaying() ?: false
-            Log.d(TAG, "从保存数据中恢复: ${songList.size} 首歌曲, 当前索引: $currentSongIndex")
+            val savedPosition = preferenceHelper?.getCurrentPosition() ?: 0
+            Log.d(TAG, "从保存数据中恢复: ${songList.size} 首歌曲, 当前索引: $currentSongIndex, 播放位置: $savedPosition")
+            
+            // 如果之前有保存的歌曲，准备播放
+            if (songList.isNotEmpty() && currentSongIndex < songList.size) {
+                val song = songList[currentSongIndex]
+                Log.d(TAG, "准备播放: ${song.title} 从位置: ${formatTime(savedPosition)}")
+                
+                // 更新UI显示
+                updateUI()
+                
+                // 显示恢复提示
+                Toast.makeText(this, "已恢复上次播放: ${song.title}", Toast.LENGTH_SHORT).show()
+            }
         } else {
             Log.d(TAG, "没有保存的播放列表，需要重新扫描")
         }
@@ -889,6 +923,14 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "界面初始化遇到小问题，尝试继续运行...", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    // 格式化时间显示
+    private fun formatTime(milliseconds: Int): String {
+        val seconds = milliseconds / 1000
+        val minutes = seconds / 60
+        val remainingSeconds = seconds % 60
+        return String.format("%d:%02d", minutes, remainingSeconds)
     }
 
     private fun setupPlaybackControls() {
@@ -1515,6 +1557,13 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         
+        // 应用进入后台时保存当前播放位置
+        if (isServiceBound && musicService != null) {
+            val currentPosition = musicService?.getCurrentPosition() ?: 0
+            preferenceHelper?.saveCurrentPosition(currentPosition)
+            Log.d(TAG, "应用进入后台，保存播放位置: ${formatTime(currentPosition)}")
+        }
+        
         // 保留广播接收器注册，确保即使App在后台也能收到更新
         // 不再注销广播接收器，避免后台状态下无法同步
         Log.d(TAG, "MainActivity暂停，但保留广播接收器")
@@ -1526,21 +1575,45 @@ class MainActivity : AppCompatActivity() {
         // 确保广播接收器已注册
         registerBroadcastReceiver()
         
-        // 主动从服务同步当前状态
-        if (isServiceBound) {
-            musicService?.let { service ->
-                currentSongIndex = service.getCurrentSongIndex()
-                this@MainActivity.isPlaying = service.isPlaying()
-                
-                val currentSong = service.getCurrentSong()
-                if (currentSong != null && currentSongIndex >= 0 && currentSongIndex < songList.size) {
-                    songList[currentSongIndex] = currentSong
+        // 延迟同步状态，确保服务已完全就绪
+        Handler(Looper.getMainLooper()).postDelayed({
+            // 主动从服务同步当前状态
+            if (isServiceBound) {
+                musicService?.let { service ->
+                    currentSongIndex = service.getCurrentSongIndex()
+                    this@MainActivity.isPlaying = service.isPlaying()
+                    
+                    val currentSong = service.getCurrentSong()
+                    if (currentSong != null && currentSongIndex >= 0 && currentSongIndex < songList.size) {
+                        songList[currentSongIndex] = currentSong
+                    }
+                    
+                    updateUI()
+                    Log.d(TAG, "onResume时主动同步状态，当前歌曲: ${currentSong?.title}")
                 }
+            } else {
+                // 如果服务未绑定，重新绑定并同步
+                bindMusicService()
                 
-                updateUI()
-                Log.d(TAG, "onResume时主动同步状态，当前歌曲: ${currentSong?.title}")
+                // 延迟再次尝试同步
+                Handler(Looper.getMainLooper()).postDelayed({
+                    if (isServiceBound) {
+                        musicService?.let { service ->
+                            currentSongIndex = service.getCurrentSongIndex()
+                            this@MainActivity.isPlaying = service.isPlaying()
+                            
+                            val currentSong = service.getCurrentSong()
+                            if (currentSong != null && currentSongIndex >= 0 && currentSongIndex < songList.size) {
+                                songList[currentSongIndex] = currentSong
+                            }
+                            
+                            updateUI()
+                            Log.d(TAG, "重新绑定后同步状态，当前歌曲: ${currentSong?.title}")
+                        }
+                    }
+                }, 300)
             }
-        }
+        }, 100)
     }
     
     override fun onStop() {
@@ -1569,9 +1642,19 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         
-        // 清理所有资源，防止内存泄漏
+        // 应用完全退出时保存完整的播放状态
         try {
-            // 只在真正销毁时注销广播接收器
+            // 保存当前播放状态
+            saveCurrentState()
+            
+            // 如果服务已绑定，获取最新的播放位置
+            if (isServiceBound && musicService != null) {
+                val currentPosition = musicService?.getCurrentPosition() ?: 0
+                preferenceHelper?.saveCurrentPosition(currentPosition)
+                Log.d(TAG, "应用退出，保存完整播放状态: ${formatTime(currentPosition)}")
+            }
+            
+            // 清理所有资源，防止内存泄漏
             unregisterBroadcastReceiver()
             
             // 解绑服务
@@ -1582,12 +1665,6 @@ class MainActivity : AppCompatActivity() {
                 } catch (e: IllegalArgumentException) {
                     Log.w(TAG, "服务未绑定，忽略解绑错误")
                 }
-            }
-            
-            // 停止音乐服务（如果不需要后台播放）
-            if (!isFinishing) {
-                val serviceIntent = Intent(this, MusicService::class.java)
-                stopService(serviceIntent)
             }
             
         } catch (e: Exception) {

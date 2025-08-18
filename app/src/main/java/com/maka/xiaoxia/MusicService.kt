@@ -38,6 +38,14 @@ class MusicService : Service() {
         private const val NOTIFICATION_ID = 1
     }
 
+    // 格式化时间显示
+    private fun formatTime(milliseconds: Int): String {
+        val seconds = milliseconds / 1000
+        val minutes = seconds / 60
+        val remainingSeconds = seconds % 60
+        return String.format("%d:%02d", minutes, remainingSeconds)
+    }
+
     override fun onCreate() {
         super.onCreate()
         Log.d("MusicService", "服务创建")
@@ -115,11 +123,14 @@ class MusicService : Service() {
     }
 
     private fun savePlaybackState() {
+        // 使用同步写入确保数据立即生效
         sharedPref.edit().apply {
             putBoolean("is_playing", isPlaying)
             putInt("current_song_index", currentSongIndex)
             putString("current_song_path", currentSongPath)
             putInt("song_count", songList.size)
+            putInt("current_position", getCurrentPosition())
+            putLong("last_play_time", System.currentTimeMillis())
             
             // 保存完整的歌曲列表信息
             songList.forEachIndexed { index, song ->
@@ -142,7 +153,8 @@ class MusicService : Service() {
                 putLong("current_album_id", song.albumId)
                 putString("current_lyrics", song.lyrics ?: "")
             }
-            apply()
+            // 使用commit()同步写入，确保数据立即生效
+            commit()
         }
     }
 
@@ -150,6 +162,58 @@ class MusicService : Service() {
         isPlaying = sharedPref.getBoolean("is_playing", false)
         currentSongIndex = sharedPref.getInt("current_song_index", 0)
         currentSongPath = sharedPref.getString("current_song_path", null)
+        val savedPosition = sharedPref.getInt("current_position", 0)
+        
+        // 恢复歌曲列表
+        val songCount = sharedPref.getInt("song_count", 0)
+        if (songCount > 0) {
+            songList.clear()
+            for (i in 0 until songCount) {
+                val id = sharedPref.getLong("song_${i}_id", 0)
+                val title = sharedPref.getString("song_${i}_title", "未知歌曲") ?: "未知歌曲"
+                val artist = sharedPref.getString("song_${i}_artist", "未知艺术家") ?: "未知艺术家"
+                val album = sharedPref.getString("song_${i}_album", "未知专辑") ?: "未知专辑"
+                val duration = sharedPref.getLong("song_${i}_duration", 0)
+                val path = sharedPref.getString("song_${i}_path", "") ?: ""
+                val albumId = sharedPref.getLong("song_${i}_albumId", 0)
+                val lyrics = sharedPref.getString("song_${i}_lyrics", "") ?: ""
+                
+                if (path.isNotEmpty()) {
+                    songList.add(Song(id, title, artist, album, duration, path, albumId, lyrics))
+                }
+            }
+        }
+        
+        // 如果有保存的歌曲列表，设置当前歌曲
+        if (songList.isNotEmpty() && currentSongIndex < songList.size) {
+            val song = songList[currentSongIndex]
+            currentSongPath = song.path
+            
+            // 尝试加载并seek到保存的位置
+            try {
+                mediaPlayer?.reset()
+                mediaPlayer?.setDataSource(song.path)
+                mediaPlayer?.prepare()
+                if (savedPosition > 0) {
+                    mediaPlayer?.seekTo(savedPosition)
+                }
+                
+                if (isPlaying) {
+                    mediaPlayer?.start()
+                    Log.d("MusicService", "恢复播放: ${song.title} 从位置: ${formatTime(savedPosition)}")
+                } else {
+                    Log.d("MusicService", "准备播放: ${song.title} 从位置: ${formatTime(savedPosition)}")
+                }
+                
+                // 更新通知和小部件
+                updateNotification()
+                updateWidget()
+                
+            } catch (e: Exception) {
+                Log.e("MusicService", "恢复播放状态失败: ${e.message}")
+                isPlaying = false
+            }
+        }
     }
 
     private fun togglePlayPauseInternal() {
@@ -371,12 +435,12 @@ class MusicService : Service() {
     }
     
     private fun updateWidget() {
-        // 强制确保SharedPreferences已写入完成
-        sharedPref.edit().commit()
+        // 先保存播放状态到SharedPreferences
+        savePlaybackState()
         
         val currentSong = songList.getOrNull(currentSongIndex)
         
-        // 创建广播数据
+        // 创建广播数据 - 使用直接数据传递，避免SharedPreferences延迟
         val broadcastData = Intent(ACTION_UPDATE_WIDGET).apply {
             putExtra("is_playing", isPlaying)
             putExtra("current_title", currentSong?.title ?: "未知歌曲")
@@ -390,21 +454,21 @@ class MusicService : Service() {
             // 直接传递封面数据，避免从SharedPreferences读取的延迟
             putExtra("cover_path", currentSong?.path ?: "")
             putExtra("cover_album_id", currentSong?.albumId ?: 0L)
+            
+            // 添加时间戳确保广播的唯一性
+            putExtra("update_timestamp", System.currentTimeMillis())
         }
         
-        // 发送广播给所有接收者（包括MainActivity和小组件）
+        // 立即发送广播给所有接收者（包括MainActivity和小组件）
         sendBroadcast(broadcastData)
         Log.d("MusicService", "已发送UPDATE_WIDGET广播，当前歌曲: ${currentSong?.title}, 索引: $currentSongIndex")
         
-        // 延迟发送系统广播，确保数据已完全写入，但避免与系统onUpdate冲突
-        android.os.Handler().postDelayed({
-            val widgetUpdateIntent = Intent(AppWidgetManager.ACTION_APPWIDGET_UPDATE).apply {
-                component = ComponentName(this@MusicService, MusicWidgetProvider::class.java)
-                putExtra("skip_if_recent_update", true)  // 标记这是延迟更新
-            }
-            sendBroadcast(widgetUpdateIntent)
-            Log.d("MusicService", "延迟发送系统小组件更新广播")
-        }, 200)
+        // 立即发送系统广播，确保小组件及时更新
+        val widgetUpdateIntent = Intent(AppWidgetManager.ACTION_APPWIDGET_UPDATE).apply {
+            component = ComponentName(this@MusicService, MusicWidgetProvider::class.java)
+        }
+        sendBroadcast(widgetUpdateIntent)
+        Log.d("MusicService", "立即发送系统小组件更新广播")
         
         // 发送一个专门的UI更新广播给MainActivity
         val uiUpdateIntent = Intent("com.maka.xiaoxia.UPDATE_UI").apply {

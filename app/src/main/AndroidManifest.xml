@@ -7,6 +7,9 @@
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     
+    <!-- 安卓14及以上版本需要额外的权限 -->
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    
     <!-- 安卓12及以下版本的旧权限 -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
@@ -47,21 +50,26 @@
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
         
-        <!-- 音乐播放小组件 -->
+        <!-- 音乐播放小组件 - 安卓12+兼容性 -->
         <receiver android:name=".MusicWidgetProvider"
-            android:exported="true">
+            android:exported="true"
+            android:enabled="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="com.maka.xiaoxia.action.UPDATE_WIDGET" />
+                <action android:name="com.maka.xiaoxia.action.PLAY_PAUSE" />
+                <action android:name="com.maka.xiaoxia.action.NEXT" />
+                <action android:name="com.maka.xiaoxia.action.PREVIOUS" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/music_widget_info" />
         </receiver>
         
-        <!-- 音乐控制广播接收器 -->
+        <!-- 音乐控制广播接收器 - 安卓12+兼容性 -->
         <receiver android:name=".MusicControlReceiver"
-            android:exported="true">
+            android:exported="true"
+            android:enabled="true">
             <intent-filter>
                 <action android:name="com.maka.xiaoxia.action.PLAY_PAUSE" />
                 <action android:name="com.maka.xiaoxia.action.NEXT" />
