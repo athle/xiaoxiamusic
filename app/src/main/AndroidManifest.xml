@@ -19,6 +19,12 @@
     <!-- 音频设置权限 -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     
+    <!-- 媒体按钮权限 -->
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    
+    <!-- 通知权限 - 安卓13+ -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    
     <!-- 前台服务权限 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
@@ -44,13 +50,23 @@
             </intent-filter>
         </activity>
         
+        <!-- 小组件配置活动 - 安卓4.4兼容性修复 -->
+        <activity
+            android:name="com.maka.xiaoxia.widget.WidgetConfigActivity"
+            android:exported="true"
+            android:theme="@style/Theme.XiaoxiaMusic">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+        
         <!-- 后台音乐服务 -->
         <service android:name=".MusicService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
         
-        <!-- 音乐播放小组件 - 安卓12+兼容性 -->
+        <!-- 音乐播放小组件 - 标准版 -->
         <receiver android:name=".MusicWidgetProvider"
             android:exported="true"
             android:enabled="true">
@@ -66,6 +82,8 @@
                 android:resource="@xml/music_widget_info" />
         </receiver>
         
+
+        
         <!-- 音乐控制广播接收器 - 安卓12+兼容性 -->
         <receiver android:name=".MusicControlReceiver"
             android:exported="true"
@@ -76,6 +94,59 @@
                 <action android:name="com.maka.xiaoxia.action.PREVIOUS" />
             </intent-filter>
         </receiver>
+        
+        <!-- 媒体按钮接收器 - 车机控制支持 -->
+        <receiver android:name="androidx.media.session.MediaButtonReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
+        
+        <!-- 车机实体按键接收器 - 领克02 CS11专用 -->
+        <receiver android:name=".CarMediaButtonReceiver"
+            android:exported="true"
+            android:enabled="true"
+            android:priority="1000">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </receiver>
+        
+        <!-- 车机实体按键服务 - 领克02 CS11兼容性 -->
+        <service android:name=".MediaButtonService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+            
+        <!-- 车机专用小组件 - 领克02 CS11识别优化 -->
+        <receiver android:name=".CarWidgetProvider"
+            android:exported="true"
+            android:enabled="true"
+            android:label="车机音乐控制">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.maka.xiaoxia.action.UPDATE_CAR_WIDGET" />
+                <action android:name="com.maka.xiaoxia.action.PLAY_PAUSE" />
+                <action android:name="com.maka.xiaoxia.action.NEXT" />
+                <action android:name="com.maka.xiaoxia.action.PREVIOUS" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/car_widget_info" />
+        </receiver>
+        
+        <!-- 车机按键测试Activity -->
+        <activity android:name=".CarKeyTestActivity"
+            android:exported="true"
+            android:label="车机按键测试">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
     </application>
 
 </manifest>

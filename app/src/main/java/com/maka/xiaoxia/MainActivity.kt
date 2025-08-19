@@ -222,6 +222,7 @@ class MainActivity : AppCompatActivity() {
         Log.d(TAG, "检查权限 - 首次运行: $isFirstRun")
         Log.d(TAG, "Android版本: ${Build.VERSION.SDK_INT}")
         Log.d(TAG, "所有权限状态: ${PermissionHelper.hasAllPermissions(this)}")
+        Log.d(TAG, "ColorOS通知权限状态: ${ColorOSHelper.getNotificationPermissionStatus(this)}")
         
         try {
             if (isFirstRun) {
@@ -231,6 +232,15 @@ class MainActivity : AppCompatActivity() {
                 emptyView?.text = "欢迎使用音乐播放器\n点击左上角菜单开始使用"
             } else if (PermissionHelper.hasAllPermissions(this)) {
                 Log.d(TAG, "权限已授予，开始加载音乐数据")
+                
+                // 检查ColorOS 15通知权限
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    if (!ColorOSHelper.checkColorOS15NotificationPermission(this)) {
+                        showColorOS15NotificationDialog()
+                        return
+                    }
+                }
+                
                 loadMusicData()
             } else {
                 Log.d(TAG, "需要请求权限")
@@ -263,6 +273,24 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "请在系统设置中手动授予权限", Toast.LENGTH_LONG).show()
             }
         }
+    }
+    
+    /**
+     * 显示ColorOS 15通知权限对话框
+     */
+    private fun showColorOS15NotificationDialog() {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("ColorOS 15通知权限")
+            .setMessage("检测到您使用的是ColorOS 15系统，需要开启通知权限才能正常显示播放控制通知。\n\n请前往设置 > 通知与状态栏 > 音乐播放器 > 允许通知")
+            .setPositiveButton("前往设置") { _, _ ->
+                ColorOSHelper.openColorOS15NotificationSettings(this)
+            }
+            .setNegativeButton("稍后") { _, _ ->
+                Toast.makeText(this, "通知权限未开启，可能影响使用体验", Toast.LENGTH_LONG).show()
+                loadMusicData()
+            }
+            .setCancelable(false)
+            .show()
     }
 
     private fun loadMusicData() {

@@ -50,6 +50,9 @@ dependencies {
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     // 移除Material Design依赖，使用原生Android组件
     
+    // 媒体支持库 - 车机控制
+    implementation("androidx.media:media:1.6.0")
+    
     // Gson用于数据序列化
     implementation("com.google.code.gson:gson:2.8.9")
     

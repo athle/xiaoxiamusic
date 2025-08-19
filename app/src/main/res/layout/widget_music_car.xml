@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:background="@drawable/widget_background"
+    android:padding="8dp">
+
+    <!-- 专辑封面区域 - 根据尺寸自适应显示 -->
+    <LinearLayout
+        android:id="@+id/album_cover_container"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:layout_marginEnd="8dp"
+        android:visibility="gone">
+        
+        <ImageView
+            android:id="@+id/widget_album_cover"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:scaleType="centerCrop"
+            android:src="@drawable/ic_music_default" />
+    </LinearLayout>
+
+    <!-- 主内容区域 -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:gravity="center_vertical">
+
+        <!-- 歌曲信息区域 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+            
+            <TextView
+                android:id="@+id/widget_song_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="歌曲名称"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+                
+            <TextView
+                android:id="@+id/widget_artist_name"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="艺术家"
+                android:textColor="#B3FFFFFF"
+                android:textSize="12sp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+        </LinearLayout>
+
+        <!-- 控制按钮区域 - 根据尺寸自适应 -->
+        <LinearLayout
+            android:id="@+id/control_buttons_container"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:layout_marginTop="4dp">
+
+            <!-- 上一首按钮 -->
+            <ImageButton
+                android:id="@+id/widget_prev_button"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:src="@drawable/ic_prev"
+                android:background="?android:attr/selectableItemBackground"
+                android:contentDescription="上一首" />
+
+            <!-- 播放/暂停按钮 -->
+            <ImageButton
+                android:id="@+id/widget_play_pause_button"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
+                android:src="@drawable/ic_play"
+                android:background="?android:attr/selectableItemBackground"
+                android:contentDescription="播放/暂停" />
+
+            <!-- 下一首按钮 -->
+            <ImageButton
+                android:id="@+id/widget_next_button"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:src="@drawable/ic_next"
+                android:background="?android:attr/selectableItemBackground"
+                android:contentDescription="下一首" />
+
+            <!-- 打开应用按钮 - 大尺寸时显示 -->
+            <ImageButton
+                android:id="@+id/widget_open_app_button"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_marginStart="12dp"
+                android:src="@drawable/ic_music_default"
+                android:background="?android:attr/selectableItemBackground"
+                android:contentDescription="打开应用"
+                android:visibility="gone" />
+        </LinearLayout>
+    </LinearLayout>
+
+</LinearLayout>

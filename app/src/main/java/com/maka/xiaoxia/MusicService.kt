@@ -19,7 +19,11 @@ import android.util.Log
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.os.Build
+import android.media.AudioManager
+import android.view.KeyEvent
 import java.io.IOException
+import com.maka.xiaoxia.CarMediaSessionManager
+import com.maka.xiaoxia.ColorOS15MediaSessionManager
 
 class MusicService : Service() {
     
@@ -29,11 +33,17 @@ class MusicService : Service() {
     private var songList: MutableList<Song> = mutableListOf()
     private var currentSongIndex = 0
     private lateinit var sharedPref: SharedPreferences
+    private lateinit var audioManager: AudioManager
+    private var headsetReceiver: BroadcastReceiver? = null
+    private lateinit var carMediaSessionManager: CarMediaSessionManager
+    private var colorOS15MediaSessionManager: ColorOS15MediaSessionManager? = null
     
     companion object {
         const val ACTION_PLAY_PAUSE = "com.maka.xiaoxia.action.PLAY_PAUSE"
         const val ACTION_NEXT = "com.maka.xiaoxia.action.NEXT"
         const val ACTION_PREVIOUS = "com.maka.xiaoxia.action.PREVIOUS"
+        const val ACTION_STOP = "com.maka.xiaoxia.action.STOP"
+        const val ACTION_SEEK_TO = "com.maka.xiaoxia.action.SEEK_TO"
         const val ACTION_UPDATE_WIDGET = "com.maka.xiaoxia.action.UPDATE_WIDGET"
         const val PREF_NAME = "music_service_prefs"
         
@@ -54,6 +64,7 @@ class MusicService : Service() {
         Log.d("MusicService", "服务创建")
         
         sharedPref = getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         
         // 创建通知渠道
         createNotificationChannel()
@@ -67,14 +78,25 @@ class MusicService : Service() {
         // 恢复播放状态
         restorePlaybackState()
         
-        // 广播接收器已移除，通过onStartCommand处理所有操作
+        // 注册耳机和媒体按钮接收器
+        registerMediaButtonReceiver()
+        
+        // 初始化车机媒体会话管理器
+        carMediaSessionManager = CarMediaSessionManager(this)
+        carMediaSessionManager.createMediaSession()
+        
+        // 初始化ColorOS 15媒体会话管理器（用于系统控制中心）
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            colorOS15MediaSessionManager = ColorOS15MediaSessionManager(this)
+            colorOS15MediaSessionManager?.createMediaSession()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d("MusicService", "服务启动: ${intent?.action}")
         
-        // 启动前台服务
-        startForegroundNotification()
+        // 立即创建默认通知，避免前台服务超时
+        createDefaultForegroundNotification()
         
         // 处理启动意图中的动作
         intent?.action?.let { action ->
@@ -82,8 +104,16 @@ class MusicService : Service() {
                 ACTION_PLAY_PAUSE -> togglePlayPauseInternal()
                 ACTION_NEXT -> playNextInternal()
                 ACTION_PREVIOUS -> playPreviousInternal()
+                ACTION_STOP -> stopPlaybackInternal()
+                ACTION_SEEK_TO -> {
+                    val position = intent.getLongExtra("position", 0)
+                    seekToInternal(position.toInt())
+                }
             }
         }
+        
+        // 延迟更新为实际内容通知
+        updateNotificationWithDelay()
         
         return START_STICKY
     }
@@ -92,14 +122,76 @@ class MusicService : Service() {
         super.onDestroy()
         Log.d("MusicService", "服务销毁")
         savePlaybackState()
+        
+        // 注销耳机接收器
+        headsetReceiver?.let {
+            unregisterReceiver(it)
+            headsetReceiver = null
+        }
+        
+        // 释放增强型媒体通知管理器
+        if (::enhancedMediaNotificationManager.isInitialized) {
+            enhancedMediaNotificationManager.release()
+        }
+        
+        // 释放传统通知管理器
+        if (::legacyMediaNotificationManager.isInitialized) {
+            legacyMediaNotificationManager.cancelNotification()
+        }
+        
+        // 释放车机媒体会话
+        if (::carMediaSessionManager.isInitialized) {
+            carMediaSessionManager.releaseMediaSession()
+        }
+        
+        // 释放ColorOS 15媒体会话
+        colorOS15MediaSessionManager?.releaseMediaSession()
+        
         mediaPlayer?.release()
         mediaPlayer = null
+        
+        // 取消通知
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.cancel(NOTIFICATION_ID)
     }
 
     override fun onBind(intent: Intent?): IBinder = binder
 
-    private fun registerBroadcastReceiver() {
-        // 服务内部广播接收器已移除，通过onStartCommand处理所有操作
+    private fun registerMediaButtonReceiver() {
+        // 注册耳机插拔和蓝牙媒体按钮接收器
+        headsetReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                when (intent.action) {
+                    Intent.ACTION_HEADSET_PLUG -> {
+                        val state = intent.getIntExtra("state", -1)
+                        if (state == 0) {
+                            // 耳机拔出，暂停播放
+                            if (isPlaying) {
+                                togglePlayPauseInternal()
+                            }
+                        }
+                    }
+                    AudioManager.ACTION_AUDIO_BECOMING_NOISY -> {
+                        // 音频即将变得嘈杂（如蓝牙断开），暂停播放
+                        if (isPlaying) {
+                            togglePlayPauseInternal()
+                        }
+                    }
+                }
+            }
+        }
+        
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_HEADSET_PLUG)
+            addAction(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
+        }
+        
+        try {
+            registerReceiver(headsetReceiver, filter)
+            Log.d("MusicService", "已注册媒体按钮接收器")
+        } catch (e: Exception) {
+            Log.e("MusicService", "注册媒体按钮接收器失败: ${e.message}")
+        }
     }
 
     private fun loadSongList() {
@@ -252,6 +344,12 @@ class MusicService : Service() {
         mediaPlayer?.seekTo(position)
     }
     
+    private fun seekToInternal(position: Int) {
+        mediaPlayer?.seekTo(position)
+        updateNotification()
+        updateWidget()
+    }
+    
     // 修改播放控制方法，确保状态同步
     private fun playMusicInternal(index: Int) {
         if (index < 0 || index >= songList.size) return
@@ -322,20 +420,94 @@ class MusicService : Service() {
         playMusicInternal(currentSongIndex)
     }
 
+    private fun stopPlaybackInternal() {
+        try {
+            mediaPlayer?.stop()
+            mediaPlayer?.reset()
+            isPlaying = false
+            currentSongPath = null
+            
+            Log.d("MusicService", "停止播放")
+            
+            // 更新通知
+            stopForeground(true)
+            
+            // 更新小组件
+            updateWidget()
+            
+            // 保存状态
+            savePlaybackState()
+            
+        } catch (e: Exception) {
+            Log.e("MusicService", "停止播放失败: ${e.message}")
+        }
+    }
+
 
     
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "音乐播放"
-            val descriptionText = "音乐播放控制"
-            val importance = NotificationManager.IMPORTANCE_LOW
+            val name = "音乐播放服务"
+            val descriptionText = "音乐播放前台服务通知"
+            val importance = NotificationManager.IMPORTANCE_HIGH
             val channel = NotificationChannel(NOTIFICATION_CHANNEL_ID, name, importance).apply {
                 description = descriptionText
+                setShowBadge(false)
+                enableLights(false)
+                enableVibration(false)
+                setSound(null, null)
+                
+                // 安卓8.0及以上需要额外设置
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    setAllowBubbles(false)
+                    setBypassDnd(false)
+                }
+                
+                // 安卓14及以上需要额外设置
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    setAllowBubbles(false)
+                }
             }
-            
             val notificationManager: NotificationManager =
                 getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.createNotificationChannel(channel)
+            
+            // ColorOS特殊处理
+            try {
+                // ColorOS 15+ 特殊处理
+                val colorOsChannel = NotificationChannel("${NOTIFICATION_CHANNEL_ID}_coloros", 
+                    "音乐播放(ColorOS)", NotificationManager.IMPORTANCE_HIGH).apply {
+                    description = "ColorOS音乐播放服务"
+                    setShowBadge(false)
+                    enableLights(false)
+                    enableVibration(false)
+                    setSound(null, null)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        setAllowBubbles(false)
+                        setBypassDnd(false)
+                    }
+                }
+                notificationManager.createNotificationChannel(colorOsChannel)
+                
+                // ColorOS 15需要额外的通知渠道
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    val colorOs15Channel = NotificationChannel("${NOTIFICATION_CHANNEL_ID}_coloros15", 
+                        "音乐播放(ColorOS 15)", NotificationManager.IMPORTANCE_HIGH).apply {
+                        description = "ColorOS 15音乐播放服务"
+                        setShowBadge(false)
+                        enableLights(false)
+                        enableVibration(false)
+                        setSound(null, null)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            setAllowBubbles(false)
+                            setBypassDnd(false)
+                        }
+                    }
+                    notificationManager.createNotificationChannel(colorOs15Channel)
+                }
+            } catch (e: Exception) {
+                Log.d("MusicService", "ColorOS通知渠道创建失败: ${e.message}")
+            }
         }
     }
     
@@ -377,149 +549,199 @@ class MusicService : Service() {
         }
     }
 
-    private fun startForegroundNotification() {
-        val notificationIntent = Intent(this, MainActivity::class.java)
-        val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            PendingIntent.FLAG_IMMUTABLE
-        } else {
-            0
-        }
-        
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0, notificationIntent, pendingIntentFlags
-        )
-        
-        val playPauseIntent = Intent(this, MusicService::class.java).apply {
-            action = ACTION_PLAY_PAUSE
-        }
-        val playPausePendingIntent = PendingIntent.getService(
-            this, 1, playPauseIntent, pendingIntentFlags
-        )
-        
-        val nextIntent = Intent(this, MusicService::class.java).apply {
-            action = ACTION_NEXT
-        }
-        val nextPendingIntent = PendingIntent.getService(
-            this, 2, nextIntent, pendingIntentFlags
-        )
-        
-        val prevIntent = Intent(this, MusicService::class.java).apply {
-            action = ACTION_PREVIOUS
-        }
-        val prevPendingIntent = PendingIntent.getService(
-            this, 3, prevIntent, pendingIntentFlags
-        )
-        
-        val songTitle = if (songList.isNotEmpty() && currentSongIndex < songList.size) {
-            songList[currentSongIndex].title
-        } else {
-            "未选择歌曲"
-        }
-        
-        val songArtist = if (songList.isNotEmpty() && currentSongIndex < songList.size) {
-            songList[currentSongIndex].artist
-        } else {
-            "未知艺术家"
-        }
-        
-        val songPath = if (songList.isNotEmpty() && currentSongIndex < songList.size) {
-            songList[currentSongIndex].path
-        } else {
-            ""
-        }
-        
-        // 获取专辑封面
-        var albumArt: Bitmap? = null
-        if (!songPath.isEmpty()) {
-            albumArt = getAlbumArt(songPath)
-        }
-        
-        val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(this, NOTIFICATION_CHANNEL_ID)
-        } else {
-            Notification.Builder(this)
-        }
-            .setContentTitle(songTitle)
-            .setContentText(songArtist)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentIntent(pendingIntent)
-            .setOngoing(true)
-            .addAction(R.drawable.ic_previous, "上一首", prevPendingIntent)
-            .addAction(R.drawable.ic_play, "播放/暂停", playPausePendingIntent)
-            .addAction(R.drawable.ic_next, "下一首", nextPendingIntent)
-            .apply {
-                // 在安卓4.4+支持设置大图标显示专辑封面
-                albumArt?.let { bitmap ->
-                    setLargeIcon(bitmap)
-                }
+    // 新增增强型媒体通知管理器
+    private lateinit var enhancedMediaNotificationManager: EnhancedMediaNotificationManager
+    private lateinit var legacyMediaNotificationManager: LegacyMediaNotificationManager
+    
+    private fun createDefaultForegroundNotification() {
+        // 立即创建默认通知，确保前台服务启动成功
+        val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            if (!::enhancedMediaNotificationManager.isInitialized) {
+                enhancedMediaNotificationManager = EnhancedMediaNotificationManager(this)
             }
-            .build()
-        
+            enhancedMediaNotificationManager.createMediaNotification(
+                "音乐播放器", "准备中...", "", false, null, 0, 0
+            )
+        } else {
+            if (!::legacyMediaNotificationManager.isInitialized) {
+                legacyMediaNotificationManager = LegacyMediaNotificationManager(this)
+            }
+            legacyMediaNotificationManager.createLegacyMediaNotification(
+                "音乐播放器", "准备中...", "", false, null
+            )
+        }
         startForeground(NOTIFICATION_ID, notification)
+    }
+
+    private fun updateNotificationWithDelay() {
+        // 延迟100ms后更新为实际内容，确保前台服务已启动
+        android.os.Handler(mainLooper).postDelayed({
+            startForegroundNotification()
+        }, 100)
+    }
+
+    private fun startForegroundNotification() {
+        // 检测是否为ColorOS 15
+        val isColorOS15 = ColorOSHelper.isColorOS15(this)
+        
+        if (isColorOS15 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            // ColorOS 15系统：使用标准增强型通知，但保留控制中心媒体会话
+            if (!::enhancedMediaNotificationManager.isInitialized) {
+                enhancedMediaNotificationManager = EnhancedMediaNotificationManager(this)
+            }
+            
+            if (songList.isEmpty() || currentSongIndex >= songList.size) {
+                // 即使没有歌曲，也要创建基本通知
+                val basicNotification = enhancedMediaNotificationManager.createMediaNotification(
+                    "音乐播放器", "暂无歌曲", "", isPlaying, null, 0, 0
+                )
+                startForeground(NOTIFICATION_ID, basicNotification)
+                return
+            }
+            
+            val song = songList[currentSongIndex]
+            val albumArt = getAlbumArt(song.path)
+            
+            enhancedMediaNotificationManager.updatePlaybackState(isPlaying, getCurrentPosition().toLong(), getDuration().toLong())
+            enhancedMediaNotificationManager.updateMediaMetadata(
+                song.title,
+                song.artist,
+                song.album ?: "未知专辑",
+                getDuration().toLong(),
+                albumArt
+            )
+            
+            // 更新ColorOS 15系统控制中心媒体会话（保留此功能）
+            colorOS15MediaSessionManager?.updatePlaybackState(
+                isPlaying,
+                getCurrentPosition().toLong(),
+                getDuration().toLong()
+            )
+            colorOS15MediaSessionManager?.updateMediaMetadata(
+                song.title,
+                song.artist,
+                song.album ?: "未知专辑",
+                getDuration().toLong(),
+                albumArt
+            )
+            
+            val notification = enhancedMediaNotificationManager.createMediaNotification(
+                song.title, song.artist, song.album ?: "未知专辑", isPlaying, albumArt, getDuration().toLong(), getCurrentPosition().toLong()
+            )
+            startForeground(NOTIFICATION_ID, notification)
+            
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            // 标准增强型通知
+            if (!::enhancedMediaNotificationManager.isInitialized) {
+                enhancedMediaNotificationManager = EnhancedMediaNotificationManager(this)
+            }
+            
+            if (songList.isEmpty() || currentSongIndex >= songList.size) {
+                // 即使没有歌曲，也要创建基本通知
+                val basicNotification = enhancedMediaNotificationManager.createMediaNotification(
+                    "音乐播放器", "暂无歌曲", "", isPlaying, null, 0, 0
+                )
+                startForeground(NOTIFICATION_ID, basicNotification)
+                return
+            }
+            
+            val song = songList[currentSongIndex]
+            val albumArt = getAlbumArt(song.path)
+            
+            enhancedMediaNotificationManager.updatePlaybackState(isPlaying, getCurrentPosition().toLong(), getDuration().toLong())
+            enhancedMediaNotificationManager.updateMediaMetadata(
+                song.title,
+                song.artist,
+                song.album ?: "未知专辑",
+                getDuration().toLong(),
+                albumArt
+            )
+            
+            if (::carMediaSessionManager.isInitialized && songList.isNotEmpty()) {
+                carMediaSessionManager.updatePlaybackState(isPlaying, song.title, song.artist, getCurrentPosition().toLong(), getDuration().toLong())
+            }
+            
+            val notification = enhancedMediaNotificationManager.createMediaNotification(
+                song.title, song.artist, song.album ?: "未知专辑", isPlaying, albumArt, getDuration().toLong(), getCurrentPosition().toLong()
+            )
+            startForeground(NOTIFICATION_ID, notification)
+        } else {
+            // 传统通知（Android 4.4及以下）
+            if (!::legacyMediaNotificationManager.isInitialized) {
+                legacyMediaNotificationManager = LegacyMediaNotificationManager(this)
+            }
+            
+            if (songList.isEmpty() || currentSongIndex >= songList.size) {
+                // 即使没有歌曲，也要创建基本通知
+                val basicNotification = legacyMediaNotificationManager.createLegacyMediaNotification(
+                    "音乐播放器", "暂无歌曲", "", isPlaying, null
+                )
+                startForeground(NOTIFICATION_ID, basicNotification)
+                return
+            }
+            
+            val song = songList[currentSongIndex]
+            val albumArt = getAlbumArt(song.path)
+            
+            val notification = legacyMediaNotificationManager.createLegacyMediaNotification(
+                song.title,
+                song.artist,
+                song.album ?: "未知专辑",
+                isPlaying,
+                albumArt
+            )
+            startForeground(NOTIFICATION_ID, notification)
+        }
     }
     
     private fun updateNotification() {
         if (songList.isNotEmpty() && currentSongIndex < songList.size) {
             val song = songList[currentSongIndex]
-            
-            val notificationIntent = Intent(this, MainActivity::class.java)
-            val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                PendingIntent.FLAG_IMMUTABLE
-            } else {
-                0
-            }
-            
-            val pendingIntent = PendingIntent.getActivity(
-                this, 0, notificationIntent, pendingIntentFlags
-            )
-            
-            val playPauseIntent = Intent(this, MusicService::class.java).apply {
-                action = ACTION_PLAY_PAUSE
-            }
-            val playPausePendingIntent = PendingIntent.getService(
-                this, 1, playPauseIntent, pendingIntentFlags
-            )
-            
-            val nextIntent = Intent(this, MusicService::class.java).apply {
-                action = ACTION_NEXT
-            }
-            val nextPendingIntent = PendingIntent.getService(
-                this, 2, nextIntent, pendingIntentFlags
-            )
-            
-            val prevIntent = Intent(this, MusicService::class.java).apply {
-                action = ACTION_PREVIOUS
-            }
-            val prevPendingIntent = PendingIntent.getService(
-                this, 3, prevIntent, pendingIntentFlags
-            )
-            
-            // 获取专辑封面
             val albumArt = getAlbumArt(song.path)
-            
-            val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                Notification.Builder(this, NOTIFICATION_CHANNEL_ID)
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                // 使用增强型通知管理器更新通知
+                enhancedMediaNotificationManager.updatePlaybackState(isPlaying, getCurrentPosition().toLong(), getDuration().toLong())
+                enhancedMediaNotificationManager.updateMediaMetadata(
+                    song.title,
+                    song.artist,
+                    song.album ?: "未知专辑",
+                    getDuration().toLong(),
+                    albumArt
+                )
             } else {
-                Notification.Builder(this)
-            }
-                .setContentTitle(song.title)
-                .setContentText(song.artist)
-                .setSmallIcon(R.drawable.ic_notification)
-                .setContentIntent(pendingIntent)
-                .setOngoing(true)
-                .addAction(R.drawable.ic_previous, "上一首", prevPendingIntent)
-                .addAction(if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play, "播放/暂停", playPausePendingIntent)
-                .addAction(R.drawable.ic_next, "下一首", nextPendingIntent)
-                .apply {
-                    // 在安卓4.4+支持设置大图标显示专辑封面
-                    albumArt?.let { bitmap ->
-                        setLargeIcon(bitmap)
-                    }
+                // 使用传统通知管理器更新通知
+                if (::legacyMediaNotificationManager.isInitialized) {
+                    val notification = legacyMediaNotificationManager.createLegacyMediaNotification(
+                        song.title,
+                        song.artist,
+                        song.album ?: "未知专辑",
+                        isPlaying,
+                        albumArt
+                    )
+                    startForeground(NOTIFICATION_ID, notification)
                 }
-                .build()
+            }
+
+            // 更新车机媒体会话状态
+            if (::carMediaSessionManager.isInitialized && songList.isNotEmpty()) {
+                val song = songList[currentSongIndex]
+                carMediaSessionManager.updatePlaybackState(isPlaying, song.title, song.artist, getCurrentPosition().toLong(), getDuration().toLong())
+            }
             
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.notify(NOTIFICATION_ID, notification)
+            // 更新ColorOS 15系统控制中心媒体会话
+            colorOS15MediaSessionManager?.updatePlaybackState(
+                isPlaying,
+                getCurrentPosition().toLong(),
+                getDuration().toLong()
+            )
+            colorOS15MediaSessionManager?.updateMediaMetadata(
+                song.title,
+                song.artist,
+                song.album ?: "未知专辑",
+                getDuration().toLong(),
+                albumArt
+            )
         }
     }
     
@@ -558,6 +780,11 @@ class MusicService : Service() {
         }
         sendBroadcast(widgetUpdateIntent)
         Log.d("MusicService", "立即发送系统小组件更新广播")
+        
+        // 车机专用小组件更新
+        val carWidgetUpdateIntent = Intent("com.maka.xiaoxia.action.UPDATE_CAR_WIDGET")
+        sendBroadcast(carWidgetUpdateIntent)
+        Log.d("MusicService", "已发送车机专用小组件更新广播")
         
         // 发送一个专门的UI更新广播给MainActivity
         val uiUpdateIntent = Intent("com.maka.xiaoxia.UPDATE_UI").apply {
