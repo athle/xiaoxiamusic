@@ -68,8 +68,9 @@ class LegacyMediaNotificationManager(private val context: Context) {
         }
         val stopPendingIntent = PendingIntent.getService(context, 4, stopIntent, pendingIntentFlags)
         
-        // 获取专辑封面
-        val largeIcon = albumArt ?: getDefaultAlbumArt()
+        // 获取专辑封面并进行尺寸适配
+        val originalArt = albumArt ?: getDefaultAlbumArt()
+        val largeIcon = scaleAlbumArtForNotification(originalArt)
         
         // 构建传统通知
         val builder = NotificationCompat.Builder(context)
@@ -165,6 +166,37 @@ class LegacyMediaNotificationManager(private val context: Context) {
         }
     }
     
+    /**
+     * 缩放专辑封面以适应通知栏显示
+     * 安卓4.4系统需要固定尺寸以避免显示异常
+     */
+    private fun scaleAlbumArtForNotification(originalBitmap: Bitmap): Bitmap {
+        return try {
+            // 安卓4.4通知栏大图标推荐尺寸：64x64 dp
+            // 转换为像素：64 * density
+            val targetSizeDp = 64
+            val density = context.resources.displayMetrics.density
+            val targetSizePx = (targetSizeDp * density).toInt()
+            
+            // 如果图片已经符合要求尺寸，直接返回
+            if (originalBitmap.width == targetSizePx && originalBitmap.height == targetSizePx) {
+                return originalBitmap
+            }
+            
+            // 计算缩放比例，保持宽高比
+            val scaleFactor = targetSizePx.toFloat() / Math.max(originalBitmap.width, originalBitmap.height)
+            val scaledWidth = (originalBitmap.width * scaleFactor).toInt()
+            val scaledHeight = (originalBitmap.height * scaleFactor).toInt()
+            
+            // 创建缩放后的Bitmap
+            Bitmap.createScaledBitmap(originalBitmap, scaledWidth, scaledHeight, true)
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "专辑封面缩放失败: ${e.message}")
+            originalBitmap // 如果缩放失败，返回原始图片
+        }
+    }
+
     /**
      * 创建纯色后备专辑封面
      */

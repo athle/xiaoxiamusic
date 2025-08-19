@@ -777,6 +777,18 @@ class MusicService : Service() {
         sendBroadcast(carWidgetUpdateIntent)
         Log.d("MusicService", "已发送车机专用小组件更新广播")
         
+        // 车机低内存版小组件更新 - 参考小侠音乐小组件实现方式
+        val carWidgetLowMemoryUpdateIntent = Intent("com.maka.xiaoxia.action.UPDATE_CAR_WIDGET_LOW_MEMORY").apply {
+            putExtra("is_playing", isPlaying)
+            putExtra("current_title", currentSong?.title ?: "未知歌曲")
+            putExtra("current_artist", currentSong?.artist ?: "未知艺术家")
+            putExtra("cover_path", currentSong?.path ?: "")
+            putExtra("cover_album_id", currentSong?.albumId ?: 0L)
+            putExtra("update_timestamp", System.currentTimeMillis())
+        }
+        sendBroadcast(carWidgetLowMemoryUpdateIntent)
+        Log.d("MusicService", "已发送车机低内存版小组件更新广播")
+        
         // 发送一个专门的UI更新广播给MainActivity
         val uiUpdateIntent = Intent("com.maka.xiaoxia.UPDATE_UI").apply {
             putExtra("current_song_index", currentSongIndex)

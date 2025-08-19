@@ -138,6 +138,20 @@
                 android:resource="@xml/car_widget_info" />
         </receiver>
         
+        <!-- 车机专用低内存小组件 - 极简设计 -->
+        <receiver android:name=".CarWidgetProviderLowMemory"
+            android:exported="true"
+            android:enabled="true"
+            android:label="车机音乐控制(低内存版)">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.maka.xiaoxia.action.UPDATE_CAR_WIDGET_LOW_MEMORY" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/car_widget_info_low_memory" />
+        </receiver>
+        
         <!-- 车机按键测试Activity -->
         <activity android:name=".CarKeyTestActivity"
             android:exported="true"
