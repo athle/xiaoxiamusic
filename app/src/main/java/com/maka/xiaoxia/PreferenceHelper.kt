@@ -105,4 +105,12 @@ class PreferenceHelper(context: Context) {
     fun saveStringSet(key: String, values: Set<String>) {
         prefs.edit().putStringSet(key, values).apply()
     }
+
+    fun putInt(key: String, value: Int) {
+        prefs.edit().putInt(key, value).apply()
+    }
+
+    fun getInt(key: String, defaultValue: Int): Int {
+        return prefs.getInt(key, defaultValue)
+    }
 }

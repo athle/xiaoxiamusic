@@ -37,6 +37,8 @@ class MusicService : Service() {
     private var headsetReceiver: BroadcastReceiver? = null
     private lateinit var carMediaSessionManager: CarMediaSessionManager
     private var colorOS15MediaSessionManager: ColorOS15MediaSessionManager? = null
+    private var playMode = 2 // 0: REPEAT_ONE, 1: PLAY_ORDER, 2: REPEAT_ALL, 3: SHUFFLE
+    private var originalSongList: MutableList<Song> = mutableListOf()
     
     companion object {
         const val ACTION_PLAY_PAUSE = "com.maka.xiaoxia.action.PLAY_PAUSE"
@@ -45,6 +47,7 @@ class MusicService : Service() {
         const val ACTION_STOP = "com.maka.xiaoxia.action.STOP"
         const val ACTION_SEEK_TO = "com.maka.xiaoxia.action.SEEK_TO"
         const val ACTION_UPDATE_WIDGET = "com.maka.xiaoxia.action.UPDATE_WIDGET"
+        const val ACTION_SET_PLAY_MODE = "com.maka.xiaoxia.action.SET_PLAY_MODE"
         const val PREF_NAME = "music_service_prefs"
         
         private const val NOTIFICATION_CHANNEL_ID = "music_service_channel"
@@ -71,6 +74,11 @@ class MusicService : Service() {
         
         // 初始化MediaPlayer
         mediaPlayer = MediaPlayer()
+        
+        // 设置播放完成监听器
+        mediaPlayer?.setOnCompletionListener {
+            onSongCompleted()
+        }
         
         // 延迟加载歌曲列表，避免阻塞启动
         Thread {
@@ -112,6 +120,10 @@ class MusicService : Service() {
                 ACTION_SEEK_TO -> {
                     val position = intent.getLongExtra("position", 0)
                     seekToInternal(position.toInt())
+                }
+                ACTION_SET_PLAY_MODE -> {
+                    val mode = intent.getIntExtra("play_mode", 2)
+                    setPlayModeInternal(mode)
                 }
             }
         }
@@ -223,7 +235,14 @@ class MusicService : Service() {
             }
         }
         
+        originalSongList.clear()
+        originalSongList.addAll(songList)
+        
         Log.d("MusicService", "加载了 ${songList.size} 首歌曲")
+        
+        // 加载播放模式
+        playMode = sharedPref.getInt("play_mode", 2)
+        applyPlayMode()
     }
 
     private fun savePlaybackState() {
@@ -235,7 +254,8 @@ class MusicService : Service() {
             putInt("song_count", songList.size)
             putInt("current_position", getCurrentPosition())
             putLong("last_play_time", System.currentTimeMillis())
-            
+            putInt("play_mode", playMode)
+
             // 保存完整的歌曲列表信息
             songList.forEachIndexed { index, song ->
                 putLong("song_${index}_id", song.id)
@@ -247,7 +267,7 @@ class MusicService : Service() {
                 putLong("song_${index}_albumId", song.albumId)
                 putString("song_${index}_lyrics", song.lyrics ?: "")
             }
-            
+
             // 保存当前歌曲的完整信息
             if (songList.isNotEmpty() && currentSongIndex < songList.size) {
                 val song = songList[currentSongIndex]
@@ -400,35 +420,92 @@ class MusicService : Service() {
     private fun playNextInternal() {
         if (songList.isEmpty()) return
         
-        currentSongIndex = (currentSongIndex + 1) % songList.size
-        playMusicInternal(currentSongIndex)
+        when (playMode) {
+            0 -> { // REPEAT_ONE: 循环播放当前1首歌曲
+                // 保持在当前歌曲
+                playMusicInternal(currentSongIndex)
+            }
+            1 -> { // PLAY_ORDER: 顺序播放完整个播放列表不循环
+                if (currentSongIndex < songList.size - 1) {
+                    currentSongIndex++
+                    playMusicInternal(currentSongIndex)
+                } else {
+                    // 到达列表末尾，停止播放
+                    stopPlaybackInternal()
+                }
+            }
+            2 -> { // REPEAT_ALL: 按列表顺序循环播放整个列表
+                currentSongIndex = (currentSongIndex + 1) % songList.size
+                playMusicInternal(currentSongIndex)
+            }
+            3 -> { // SHUFFLE: 乱序播放整个播放列表
+                if (songList.size > 1) {
+                    val oldIndex = currentSongIndex
+                    do {
+                        currentSongIndex = (0 until songList.size).random()
+                    } while (currentSongIndex == oldIndex)
+                }
+                playMusicInternal(currentSongIndex)
+            }
+        }
     }
 
     private fun playPreviousInternal() {
         if (songList.isEmpty()) return
         
-        currentSongIndex = if (currentSongIndex - 1 < 0) songList.size - 1 else currentSongIndex - 1
-        playMusicInternal(currentSongIndex)
+        when (playMode) {
+            0 -> { // REPEAT_ONE: 循环播放当前1首歌曲
+                // 保持在当前歌曲
+                playMusicInternal(currentSongIndex)
+            }
+            1 -> { // PLAY_ORDER: 顺序播放完整个播放列表不循环
+                if (currentSongIndex > 0) {
+                    currentSongIndex--
+                    playMusicInternal(currentSongIndex)
+                } else {
+                    // 到达列表开头，保持在第一首
+                    currentSongIndex = 0
+                    playMusicInternal(currentSongIndex)
+                }
+            }
+            2 -> { // REPEAT_ALL: 按列表顺序循环播放整个列表
+                currentSongIndex = if (currentSongIndex - 1 < 0) songList.size - 1 else currentSongIndex - 1
+                playMusicInternal(currentSongIndex)
+            }
+            3 -> { // SHUFFLE: 乱序播放整个播放列表
+                if (songList.size > 1) {
+                    val oldIndex = currentSongIndex
+                    do {
+                        currentSongIndex = (0 until songList.size).random()
+                    } while (currentSongIndex == oldIndex)
+                }
+                playMusicInternal(currentSongIndex)
+            }
+        }
     }
 
     private fun stopPlaybackInternal() {
         try {
-            mediaPlayer?.stop()
-            mediaPlayer?.reset()
-            isPlaying = false
-            currentSongPath = null
-            
-            Log.d("MusicService", "停止播放")
-            
-            // 更新通知
-            stopForeground(true)
-            
-            // 更新小组件
-            updateWidget()
-            
-            // 保存状态
-            savePlaybackState()
-            
+            mediaPlayer?.let { mp ->
+                if (mp.isPlaying) {
+                    mp.pause()
+                }
+                mp.stop()
+                mp.reset()
+                isPlaying = false
+                currentSongPath = null
+                
+                Log.d("MusicService", "停止播放")
+                
+                // 更新通知
+                stopForeground(true)
+                
+                // 更新小组件
+                updateWidget()
+                
+                // 保存状态
+                savePlaybackState()
+            }
         } catch (e: Exception) {
             Log.e("MusicService", "停止播放失败: ${e.message}")
         }
@@ -884,6 +961,105 @@ class MusicService : Service() {
     fun setCurrentSongIndex(index: Int) {
         if (index in 0 until songList.size) {
             currentSongIndex = index
+        }
+    }
+    
+    fun setPlayMode(mode: Int) {
+        setPlayModeInternal(mode)
+    }
+    
+    private fun setPlayModeInternal(mode: Int) {
+        playMode = mode.coerceIn(0, 3)
+        sharedPref.edit().putInt("play_mode", playMode).apply()
+        
+        // 如果是乱序模式，重新打乱列表
+        if (playMode == 3) { // SHUFFLE
+            applyShuffleMode()
+        } else {
+            // 恢复原始顺序
+            restoreOriginalOrder()
+        }
+    }
+    
+    private fun applyPlayMode() {
+        when (playMode) {
+            3 -> applyShuffleMode() // SHUFFLE
+            else -> restoreOriginalOrder()
+        }
+    }
+    
+    private fun applyShuffleMode() {
+        if (originalSongList.isNotEmpty()) {
+            val currentSong = if (currentSongIndex < originalSongList.size) {
+                originalSongList[currentSongIndex]
+            } else null
+            
+            songList.clear()
+            songList.addAll(originalSongList.shuffled())
+            
+            // 保持当前歌曲在相同位置
+            currentSong?.let { song ->
+                val newIndex = songList.indexOfFirst { it.path == song.path }
+                if (newIndex != -1) {
+                    currentSongIndex = newIndex
+                }
+            }
+        }
+    }
+    
+    private fun restoreOriginalOrder() {
+        if (originalSongList.isNotEmpty()) {
+            val currentSong = if (currentSongIndex < songList.size) {
+                songList[currentSongIndex]
+            } else null
+            
+            songList.clear()
+            songList.addAll(originalSongList)
+            
+            // 恢复当前歌曲索引
+            currentSong?.let { song ->
+                val newIndex = songList.indexOfFirst { it.path == song.path }
+                if (newIndex != -1) {
+                    currentSongIndex = newIndex
+                }
+            }
+        }
+    }
+    
+    private fun onSongCompleted() {
+        Log.d("MusicService", "歌曲播放完成，当前播放模式: $playMode")
+        
+        // 根据播放模式处理下一首歌曲
+        when (playMode) {
+            0 -> { // REPEAT_ONE: 单曲循环 - 重新播放当前歌曲
+                Log.d("MusicService", "单曲循环，重新播放当前歌曲")
+                playMusicInternal(currentSongIndex)
+            }
+            1 -> { // PLAY_ORDER: 顺序播放 - 播放下一首，如果到达末尾则停止
+                if (currentSongIndex < songList.size - 1) {
+                    currentSongIndex++
+                    playMusicInternal(currentSongIndex)
+                } else {
+                    Log.d("MusicService", "到达播放列表末尾，停止播放")
+                    isPlaying = false
+                    updateNotification()
+                    updateWidget()
+                    savePlaybackState()
+                }
+            }
+            2 -> { // REPEAT_ALL: 列表循环 - 播放下一首，循环到开头
+                currentSongIndex = (currentSongIndex + 1) % songList.size
+                playMusicInternal(currentSongIndex)
+            }
+            3 -> { // SHUFFLE: 随机播放 - 随机选择下一首歌曲
+                if (songList.size > 1) {
+                    val oldIndex = currentSongIndex
+                    do {
+                        currentSongIndex = (0 until songList.size).random()
+                    } while (currentSongIndex == oldIndex)
+                }
+                playMusicInternal(currentSongIndex)
+            }
         }
     }
 }

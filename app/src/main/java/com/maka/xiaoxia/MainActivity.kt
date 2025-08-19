@@ -92,6 +92,18 @@ class MainActivity : AppCompatActivity() {
     
     // 广播接收器
     private var musicControlReceiver: BroadcastReceiver? = null
+    
+    // 播放模式控制
+    private var playModeButton: ImageButton? = null
+    private var currentPlayMode = PlayMode.REPEAT_ALL
+    
+    // 播放模式枚举
+    enum class PlayMode {
+        REPEAT_ONE,      // 循环播放当前1首歌曲
+        PLAY_ORDER,      // 顺序播放完整个播放列表不循环
+        REPEAT_ALL,      // 按列表顺序循环播放整个列表
+        SHUFFLE          // 乱序播放整个播放列表
+    }
 
     companion object {
         private const val REQUEST_CODE_PICK_MUSIC = 1001
@@ -957,6 +969,13 @@ class MainActivity : AppCompatActivity() {
             // 设置播放控制按钮的点击监听器
             setupPlaybackControls()
             
+            // 设置播放模式按钮
+            playModeButton = findViewById(R.id.btn_play_mode)
+            setupPlayModeControls()
+            
+            // 加载保存的播放模式
+            loadPlayMode()
+            
             // 检查关键视图是否初始化成功
             if (songListView == null || emptyView == null) {
                 Log.e(TAG, "关键视图初始化失败: songListView=${songListView}, emptyView=${emptyView}")
@@ -1021,6 +1040,58 @@ class MainActivity : AppCompatActivity() {
                 startSeekBarUpdate()
             }
         })
+    }
+    
+    private fun setupPlayModeControls() {
+        playModeButton?.setOnClickListener {
+            cyclePlayMode()
+        }
+    }
+    
+    private fun cyclePlayMode() {
+        currentPlayMode = when (currentPlayMode) {
+            PlayMode.REPEAT_ALL -> PlayMode.REPEAT_ONE
+            PlayMode.REPEAT_ONE -> PlayMode.PLAY_ORDER
+            PlayMode.PLAY_ORDER -> PlayMode.SHUFFLE
+            PlayMode.SHUFFLE -> PlayMode.REPEAT_ALL
+        }
+        
+        updatePlayModeIcon()
+        savePlayMode()
+        
+        // 发送到音乐服务
+        if (isServiceBound) {
+            musicService?.setPlayMode(currentPlayMode.ordinal)
+        }
+        
+        // 显示提示
+        val modeName = when (currentPlayMode) {
+            PlayMode.REPEAT_ONE -> "单曲循环"
+            PlayMode.PLAY_ORDER -> "顺序播放"
+            PlayMode.REPEAT_ALL -> "列表循环"
+            PlayMode.SHUFFLE -> "随机播放"
+        }
+        Toast.makeText(this, "播放模式: $modeName", Toast.LENGTH_SHORT).show()
+    }
+    
+    private fun updatePlayModeIcon() {
+        val iconRes = when (currentPlayMode) {
+            PlayMode.REPEAT_ONE -> R.drawable.ic_repeat_one
+            PlayMode.PLAY_ORDER -> R.drawable.ic_play_order
+            PlayMode.REPEAT_ALL -> R.drawable.ic_repeat_all
+            PlayMode.SHUFFLE -> R.drawable.ic_shuffle
+        }
+        playModeButton?.setImageResource(iconRes)
+    }
+    
+    private fun savePlayMode() {
+        preferenceHelper?.putInt("play_mode", currentPlayMode.ordinal)
+    }
+    
+    private fun loadPlayMode() {
+        val modeOrdinal = preferenceHelper?.getInt("play_mode", PlayMode.REPEAT_ALL.ordinal) ?: PlayMode.REPEAT_ALL.ordinal
+        currentPlayMode = PlayMode.values()[modeOrdinal.coerceIn(0, PlayMode.values().size - 1)]
+        updatePlayModeIcon()
     }
 
     private fun updateUI() {

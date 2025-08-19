@@ -189,6 +189,16 @@
                         android:src="@android:drawable/ic_media_next" />
                 </LinearLayout>
 
+                <!-- 播放模式按钮 -->
+                <ImageButton
+                    android:id="@+id/btn_play_mode"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_repeat_all"
+                    android:layout_marginEnd="12dp"
+                    android:contentDescription="播放模式" />
+
                 <!-- 歌曲信息 -->
                 <LinearLayout
                     android:id="@+id/song_info_layout"
