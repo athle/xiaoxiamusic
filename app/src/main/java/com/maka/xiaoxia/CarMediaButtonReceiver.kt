@@ -33,14 +33,30 @@ class CarMediaButtonReceiver : BroadcastReceiver() {
         Log.d(TAG, "处理按键码: $keyCode")
         
         val action = when (keyCode) {
+            // 标准Android媒体按键
             KeyEvent.KEYCODE_MEDIA_PLAY -> MusicService.ACTION_PLAY_PAUSE
             KeyEvent.KEYCODE_MEDIA_PAUSE -> MusicService.ACTION_PLAY_PAUSE
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> MusicService.ACTION_PLAY_PAUSE
             KeyEvent.KEYCODE_MEDIA_NEXT -> MusicService.ACTION_NEXT
             KeyEvent.KEYCODE_MEDIA_PREVIOUS -> MusicService.ACTION_PREVIOUS
             KeyEvent.KEYCODE_MEDIA_STOP -> MusicService.ACTION_STOP
+            
+            // CS11车机专用按键码（Linux键值直接映射）
+            163 -> { // Linux KEY_NEXT (下一首)
+                Log.d(TAG, "CS11车机下一首按键")
+                MusicService.ACTION_NEXT
+            }
+            164 -> { // Linux KEY_PLAYPAUSE (播放/暂停)
+                Log.d(TAG, "CS11车机播放/暂停按键")
+                MusicService.ACTION_PLAY_PAUSE
+            }
+            165 -> { // Linux KEY_PREVIOUS (上一首)
+                Log.d(TAG, "CS11车机上一首按键")
+                MusicService.ACTION_PREVIOUS
+            }
+            
             else -> {
-                Log.d(TAG, "未识别的按键码: $keyCode")
+                Log.d(TAG, "未识别的按键码: $keyCode (CS11车机)")
                 return
             }
         }

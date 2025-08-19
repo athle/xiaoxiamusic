@@ -51,19 +51,32 @@ class CarKeyTestActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_MEDIA_PLAY,
             KeyEvent.KEYCODE_MEDIA_PAUSE,
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
-                updateStatus("收到播放/暂停按键")
+                updateStatus("收到标准播放/暂停按键 (85)")
                 return true
             }
             KeyEvent.KEYCODE_MEDIA_NEXT -> {
-                updateStatus("收到下一首按键")
+                updateStatus("收到标准下一首按键 (87)")
                 return true
             }
             KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
-                updateStatus("收到上一首按键")
+                updateStatus("收到标准上一首按键 (88)")
                 return true
             }
             KeyEvent.KEYCODE_MEDIA_STOP -> {
-                updateStatus("收到停止按键")
+                updateStatus("收到标准停止按键 (86)")
+                return true
+            }
+            // CS11车机专用按键码
+            163 -> {
+                updateStatus("收到CS11车机下一首按键 (163)")
+                return true
+            }
+            164 -> {
+                updateStatus("收到CS11车机播放/暂停按键 (164)")
+                return true
+            }
+            165 -> {
+                updateStatus("收到CS11车机上一首按键 (165)")
                 return true
             }
         }
