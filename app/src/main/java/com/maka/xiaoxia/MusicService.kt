@@ -72,24 +72,28 @@ class MusicService : Service() {
         // 初始化MediaPlayer
         mediaPlayer = MediaPlayer()
         
-        // 加载歌曲列表
-        loadSongList()
-        
-        // 恢复播放状态
-        restorePlaybackState()
+        // 延迟加载歌曲列表，避免阻塞启动
+        Thread {
+            loadSongList()
+            // 延迟恢复播放状态，减少启动时的CPU负载
+            restorePlaybackState()
+        }.start()
         
         // 注册耳机和媒体按钮接收器
         registerMediaButtonReceiver()
         
-        // 初始化车机媒体会话管理器
-        carMediaSessionManager = CarMediaSessionManager(this)
-        carMediaSessionManager.createMediaSession()
-        
-        // 初始化ColorOS 15媒体会话管理器（用于系统控制中心）
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            colorOS15MediaSessionManager = ColorOS15MediaSessionManager(this)
-            colorOS15MediaSessionManager?.createMediaSession()
-        }
+        // 延迟初始化媒体会话管理器
+        Thread {
+            // 初始化车机媒体会话管理器
+            carMediaSessionManager = CarMediaSessionManager(this)
+            carMediaSessionManager.createMediaSession()
+            
+            // 初始化ColorOS 15媒体会话管理器（用于系统控制中心）
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                colorOS15MediaSessionManager = ColorOS15MediaSessionManager(this)
+                colorOS15MediaSessionManager?.createMediaSession()
+            }
+        }.start()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -197,8 +201,13 @@ class MusicService : Service() {
     private fun loadSongList() {
         songList.clear()
         
-        // 从SharedPreferences加载歌曲列表
+        // 从SharedPreferences批量加载歌曲列表
         val songCount = sharedPref.getInt("song_count", 0)
+        if (songCount == 0) {
+            Log.d("MusicService", "没有歌曲需要加载")
+            return
+        }
+        
         for (i in 0 until songCount) {
             val id = sharedPref.getLong("song_${i}_id", 0)
             val title = sharedPref.getString("song_${i}_title", "") ?: ""
@@ -259,55 +268,37 @@ class MusicService : Service() {
         currentSongPath = sharedPref.getString("current_song_path", null)
         val savedPosition = sharedPref.getInt("current_position", 0)
         
-        // 恢复歌曲列表
-        val songCount = sharedPref.getInt("song_count", 0)
-        if (songCount > 0) {
-            songList.clear()
-            for (i in 0 until songCount) {
-                val id = sharedPref.getLong("song_${i}_id", 0)
-                val title = sharedPref.getString("song_${i}_title", "未知歌曲") ?: "未知歌曲"
-                val artist = sharedPref.getString("song_${i}_artist", "未知艺术家") ?: "未知艺术家"
-                val album = sharedPref.getString("song_${i}_album", "未知专辑") ?: "未知专辑"
-                val duration = sharedPref.getLong("song_${i}_duration", 0)
-                val path = sharedPref.getString("song_${i}_path", "") ?: ""
-                val albumId = sharedPref.getLong("song_${i}_albumId", 0)
-                val lyrics = sharedPref.getString("song_${i}_lyrics", "") ?: ""
-                
-                if (path.isNotEmpty()) {
-                    songList.add(Song(id, title, artist, album, duration, path, albumId, lyrics))
-                }
-            }
-        }
-        
-        // 如果有保存的歌曲列表，设置当前歌曲
+        // 延迟恢复播放状态，避免启动时阻塞
         if (songList.isNotEmpty() && currentSongIndex < songList.size) {
             val song = songList[currentSongIndex]
             currentSongPath = song.path
             
-            // 尝试加载并seek到保存的位置
-            try {
-                mediaPlayer?.reset()
-                mediaPlayer?.setDataSource(song.path)
-                mediaPlayer?.prepare()
-                if (savedPosition > 0) {
-                    mediaPlayer?.seekTo(savedPosition)
+            // 延迟执行MediaPlayer初始化
+            Thread {
+                try {
+                    mediaPlayer?.reset()
+                    mediaPlayer?.setDataSource(song.path)
+                    mediaPlayer?.prepare()
+                    if (savedPosition > 0) {
+                        mediaPlayer?.seekTo(savedPosition)
+                    }
+                    
+                    if (isPlaying) {
+                        mediaPlayer?.start()
+                        Log.d("MusicService", "延迟恢复播放: ${song.title} 从位置: ${formatTime(savedPosition)}")
+                    } else {
+                        Log.d("MusicService", "延迟准备播放: ${song.title} 从位置: ${formatTime(savedPosition)}")
+                    }
+                    
+                    // 延迟更新通知和小部件
+                    updateNotification()
+                    updateWidget()
+                    
+                } catch (e: Exception) {
+                    Log.e("MusicService", "延迟恢复播放状态失败: ${e.message}")
+                    isPlaying = false
                 }
-                
-                if (isPlaying) {
-                    mediaPlayer?.start()
-                    Log.d("MusicService", "恢复播放: ${song.title} 从位置: ${formatTime(savedPosition)}")
-                } else {
-                    Log.d("MusicService", "准备播放: ${song.title} 从位置: ${formatTime(savedPosition)}")
-                }
-                
-                // 更新通知和小部件
-                updateNotification()
-                updateWidget()
-                
-            } catch (e: Exception) {
-                Log.e("MusicService", "恢复播放状态失败: ${e.message}")
-                isPlaying = false
-            }
+            }.start()
         }
     }
 

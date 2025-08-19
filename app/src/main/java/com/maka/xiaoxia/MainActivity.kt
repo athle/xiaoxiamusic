@@ -205,7 +205,7 @@ class MainActivity : AppCompatActivity() {
                 } catch (e: Exception) {
                     Log.e(TAG, "延迟初始化失败: ${e.message}")
                 }
-            }, 50) // 延迟50毫秒执行，给UI线程更多时间
+            }, 100) // 延迟100毫秒执行，给UI线程更多时间
             
         } catch (e: Exception) {
             Log.e(TAG, "应用启动失败: ${e.message}")
