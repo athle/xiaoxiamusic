@@ -955,6 +955,10 @@ class MainActivity : AppCompatActivity() {
             lyricsView = findViewById(R.id.lyrics_view)
             playlistTitleText = findViewById(R.id.playlist_title)
             
+            // 初始化新添加的按钮
+            val menuHamburgerButton: ImageButton? = findViewById(R.id.btn_menu_hamburger)
+            val playlistToggleButton: ImageButton? = findViewById(R.id.btn_playlist_toggle)
+            
             // 安全初始化横屏底栏控件 - 仅在横屏布局存在时获取
             try {
                 songTitleControl = findViewById(R.id.song_title_control)
@@ -972,6 +976,15 @@ class MainActivity : AppCompatActivity() {
             // 设置播放模式按钮
             playModeButton = findViewById(R.id.btn_play_mode)
             setupPlayModeControls()
+            
+            // 设置新按钮的点击监听器
+            menuHamburgerButton?.setOnClickListener {
+                drawerLayout?.openDrawer(GravityCompat.START)
+            }
+            
+            playlistToggleButton?.setOnClickListener {
+                togglePlaylistVisibility()
+            }
             
             // 加载保存的播放模式
             loadPlayMode()
@@ -1092,6 +1105,39 @@ class MainActivity : AppCompatActivity() {
         val modeOrdinal = preferenceHelper?.getInt("play_mode", PlayMode.REPEAT_ALL.ordinal) ?: PlayMode.REPEAT_ALL.ordinal
         currentPlayMode = PlayMode.values()[modeOrdinal.coerceIn(0, PlayMode.values().size - 1)]
         updatePlayModeIcon()
+    }
+
+    private fun togglePlaylistVisibility() {
+        try {
+            // 获取新的布局容器引用
+            val playerContent = findViewById<View>(R.id.player_content)
+            val playlistContent = findViewById<View>(R.id.playlist_content)
+            
+            if (playlistContent.visibility == View.VISIBLE) {
+                // 显示播放控制界面（显示歌曲封面和歌词）
+                playerContent.visibility = View.VISIBLE
+                playlistContent.visibility = View.GONE
+            } else {
+                // 显示播放列表界面
+                playerContent.visibility = View.GONE
+                playlistContent.visibility = View.VISIBLE
+                
+                // 检查是否有歌曲，显示空视图或列表
+                val emptyView = findViewById<View>(R.id.empty_view)
+                
+                if (songList.isEmpty()) {
+                    emptyView.visibility = View.VISIBLE
+                    songListView?.visibility = View.GONE
+                } else {
+                    emptyView.visibility = View.GONE
+                    songListView?.visibility = View.VISIBLE
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "切换播放列表显示失败: ${e.message}")
+            // 回退方案：直接切换列表可见性
+            songListView?.visibility = if (songListView?.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+        }
     }
 
     private fun updateUI() {

@@ -37,6 +37,7 @@ class MusicService : Service() {
     private var headsetReceiver: BroadcastReceiver? = null
     private lateinit var carMediaSessionManager: CarMediaSessionManager
     private var colorOS15MediaSessionManager: ColorOS15MediaSessionManager? = null
+    private var vivoMIUIMediaSessionManager: VivoMIUIMediaSessionManager? = null
     private var playMode = 2 // 0: REPEAT_ONE, 1: PLAY_ORDER, 2: REPEAT_ALL, 3: SHUFFLE
     private var originalSongList: MutableList<Song> = mutableListOf()
     
@@ -90,8 +91,8 @@ class MusicService : Service() {
         // 注册耳机和媒体按钮接收器
         registerMediaButtonReceiver()
         
-        // 延迟初始化媒体会话管理器
-        Thread {
+        // 立即初始化媒体会话管理器 - 修复Android 15/16系统控制中心
+        try {
             // 初始化车机媒体会话管理器
             carMediaSessionManager = CarMediaSessionManager(this)
             carMediaSessionManager.createMediaSession()
@@ -101,7 +102,27 @@ class MusicService : Service() {
                 colorOS15MediaSessionManager = ColorOS15MediaSessionManager(this)
                 colorOS15MediaSessionManager?.createMediaSession()
             }
-        }.start()
+            
+            // 初始化vivo MIUI媒体会话管理器
+            vivoMIUIMediaSessionManager = VivoMIUIMediaSessionManager(this)
+            if (vivoMIUIMediaSessionManager?.isVivoMIUISystem() == true) {
+                vivoMIUIMediaSessionManager?.createMediaSession()
+            }
+            
+            // 初始化增强型通知管理器并创建媒体会话
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                enhancedMediaNotificationManager = EnhancedMediaNotificationManager(this)
+                enhancedMediaNotificationManager.createMediaSession()
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                // Android 5.0-7.1也使用增强型通知
+                enhancedMediaNotificationManager = EnhancedMediaNotificationManager(this)
+                enhancedMediaNotificationManager.createMediaSession()
+            }
+            
+            Log.d("MusicService", "所有媒体会话已初始化完成")
+        } catch (e: Exception) {
+            Log.e("MusicService", "媒体会话初始化失败: ${e.message}")
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -162,6 +183,9 @@ class MusicService : Service() {
         
         // 释放ColorOS 15媒体会话
         colorOS15MediaSessionManager?.releaseMediaSession()
+        
+        // 释放vivo MIUI媒体会话
+        vivoMIUIMediaSessionManager?.releaseMediaSession()
         
         mediaPlayer?.release()
         mediaPlayer = null
@@ -804,6 +828,20 @@ class MusicService : Service() {
                 getDuration().toLong()
             )
             colorOS15MediaSessionManager?.updateMediaMetadata(
+                song.title,
+                song.artist,
+                song.album ?: "未知专辑",
+                getDuration().toLong(),
+                albumArt
+            )
+            
+            // 更新vivo MIUI系统控制中心媒体会话
+            vivoMIUIMediaSessionManager?.updatePlaybackState(
+                isPlaying,
+                getCurrentPosition().toLong(),
+                getDuration().toLong()
+            )
+            vivoMIUIMediaSessionManager?.updateMediaMetadata(
                 song.title,
                 song.artist,
                 song.album ?: "未知专辑",

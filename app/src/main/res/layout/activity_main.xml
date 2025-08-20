@@ -10,37 +10,145 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:background="#f5f5f5"
+        android:background="@android:color/white"
         android:fitsSystemWindows="true">
 
-        <!-- 播放器控制区域 -->
+        <!-- 1. 菜单按钮和播放列表按钮栏 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:padding="8dp"
+            android:background="@android:color/white">
+
+            <!-- 三横线菜单按钮 -->
+            <ImageButton
+                android:id="@+id/btn_menu_hamburger"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:src="@drawable/ic_menu_sort"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:scaleType="centerInside"
+                android:contentDescription="菜单" />
+
+            <Space
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1" />
+
+            <!-- 三横线带音符的播放列表按钮 -->
+            <ImageButton
+                android:id="@+id/btn_playlist_toggle"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:src="@drawable/ic_menu_view"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:scaleType="centerInside"
+                android:contentDescription="播放列表" />
+
+        </LinearLayout>
+
+        <!-- 2. 歌曲封面和歌词区域 -->
+        <LinearLayout
+            android:id="@+id/player_content"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
             android:orientation="vertical"
-            android:padding="24dp"
-            android:background="@android:color/white"
-            android:layout_marginHorizontal="16dp"
-            android:layout_marginVertical="8dp">
+            android:padding="8dp"
+            android:background="@android:color/white">
 
             <!-- 专辑封面 -->
             <ImageView
                 android:id="@+id/album_art"
-                android:layout_width="200dp"
-                android:layout_height="200dp"
+                android:layout_width="250dp"
+                android:layout_height="250dp"
                 android:layout_gravity="center_horizontal"
                 android:scaleType="centerCrop"
                 android:src="@android:drawable/ic_menu_gallery"
-                android:layout_marginBottom="16dp" />
+                android:layout_marginBottom="8dp" />
 
             <!-- 歌词显示 -->
             <com.maka.xiaoxia.LyricsView
                 android:id="@+id/lyrics_view"
                 android:layout_width="match_parent"
-                android:layout_height="120dp"
-                android:layout_marginBottom="16dp" />
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:layout_marginBottom="8dp" />
 
-            <!-- 歌曲信息 -->
+        </LinearLayout>
+
+        <!-- 播放列表区域 -->
+        <LinearLayout
+            android:id="@+id/playlist_content"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:background="@android:color/white"
+            android:visibility="gone">
+
+            <!-- 播放列表标题栏 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="16dp"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:id="@+id/playlist_title"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="默认列表"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:textColor="#333333" />
+
+                <ImageButton
+                    android:id="@+id/btn_add_music"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:src="@android:drawable/ic_input_add"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="添加音乐"
+                    android:scaleType="centerInside" />
+            </LinearLayout>
+
+            <!-- 音乐列表 -->
+            <ListView
+                android:id="@+id/song_list"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:divider="@android:color/transparent"
+                android:dividerHeight="8dp"
+                android:scrollbars="none"
+                android:clipToPadding="false"
+                android:paddingHorizontal="16dp" />
+
+            <TextView
+                android:id="@+id/empty_view"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:text="暂无音乐，请点击添加音乐按钮"
+                android:textSize="16sp"
+                android:textColor="#666666"
+                android:gravity="center"
+                android:visibility="gone" />
+
+        </LinearLayout>
+
+        <!-- 3. 歌曲信息区域 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="8dp"
+            android:background="@android:color/white">
+
             <TextView
                 android:id="@+id/song_title"
                 android:layout_width="match_parent"
@@ -59,15 +167,25 @@
                 android:text="未知艺术家"
                 android:textSize="14sp"
                 android:textColor="#666666"
-                android:gravity="center"
-                android:layout_marginBottom="16dp" />
+                android:gravity="center" />
+
+        </LinearLayout>
+
+        <!-- 4. 播放控制栏 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@android:color/white"
+            android:padding="8dp">
 
             <!-- 进度条 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:layout_marginBottom="8dp">
+                android:layout_marginBottom="16dp"
+                android:gravity="center_vertical">
 
                 <TextView
                     android:id="@+id/current_time"
@@ -95,127 +213,67 @@
             </LinearLayout>
 
             <!-- 播放控制按钮区域 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center"
-            android:layout_marginTop="8dp"
-            android:layout_marginBottom="8dp">
-
-            <!-- 菜单按钮 -->
-            <ImageButton
-                android:id="@+id/menu_button_control"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:src="@android:drawable/ic_menu_more"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:layout_marginEnd="16dp"
-                android:contentDescription="菜单" />
-
-            <ImageButton
-                android:id="@+id/btn_prev"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:src="@android:drawable/ic_media_previous"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:scaleType="centerInside"
-                android:padding="10dp"
-                android:layout_marginEnd="12dp"
-                android:contentDescription="上一首" />
-
-            <ImageButton
-                android:id="@+id/btn_play_pause"
-                android:layout_width="60dp"
-                android:layout_height="60dp"
-                android:src="@android:drawable/ic_media_play"
-                android:background="@drawable/button_control_background"
-                android:scaleType="centerInside"
-                android:padding="14dp"
-                android:layout_marginEnd="12dp"
-                android:contentDescription="播放/暂停" />
-
-            <ImageButton
-                android:id="@+id/btn_next"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:src="@android:drawable/ic_media_next"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:scaleType="centerInside"
-                android:padding="10dp"
-                android:layout_marginEnd="12dp"
-                android:contentDescription="下一首" />
-
-            <ImageButton
-                android:id="@+id/btn_play_mode"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:src="@drawable/ic_repeat_all"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:scaleType="centerInside"
-                android:padding="10dp"
-                android:layout_marginStart="0dp"
-                android:contentDescription="播放模式" />
-
-        </LinearLayout>
-        </LinearLayout>
-
-        <!-- 播放列表标题栏 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginLeft="16dp"
-            android:layout_marginRight="16dp"
-            android:layout_marginTop="8dp"
-            android:layout_marginBottom="8dp"
-            android:gravity="center_vertical">
-
-            <TextView
-                android:id="@+id/playlist_title"
-                android:layout_width="0dp"
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="默认列表"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:textColor="#333333" />
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:layout_marginTop="8dp">
 
-            <ImageButton
-                android:id="@+id/btn_add_music"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:src="@android:drawable/ic_input_add"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="添加音乐"
-                android:scaleType="centerInside"
-                android:layout_marginLeft="8dp" />
+                <ImageButton
+                    android:id="@+id/menu_button_control"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:src="@android:drawable/ic_menu_more"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:layout_marginEnd="16dp"
+                    android:contentDescription="菜单" />
+
+                <ImageButton
+                    android:id="@+id/btn_prev"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:src="@android:drawable/ic_media_previous"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:scaleType="centerInside"
+                    android:padding="10dp"
+                    android:layout_marginEnd="12dp"
+                    android:contentDescription="上一首" />
+
+                <ImageButton
+                    android:id="@+id/btn_play_pause"
+                    android:layout_width="60dp"
+                    android:layout_height="60dp"
+                    android:src="@android:drawable/ic_media_play"
+                    android:background="@drawable/button_control_background"
+                    android:scaleType="centerInside"
+                    android:padding="14dp"
+                    android:layout_marginEnd="12dp"
+                    android:contentDescription="播放/暂停" />
+
+                <ImageButton
+                    android:id="@+id/btn_next"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:src="@android:drawable/ic_media_next"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:scaleType="centerInside"
+                    android:padding="10dp"
+                    android:layout_marginEnd="12dp"
+                    android:contentDescription="下一首" />
+
+                <ImageButton
+                    android:id="@+id/btn_play_mode"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:src="@drawable/ic_repeat_all"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:scaleType="centerInside"
+                    android:padding="10dp"
+                    android:contentDescription="播放模式" />
+
+            </LinearLayout>
         </LinearLayout>
-
-        <!-- 音乐列表 -->
-        <ListView
-            android:id="@+id/song_list"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:layout_marginTop="16dp"
-            android:layout_marginBottom="16dp"
-            android:divider="@android:color/transparent"
-            android:dividerHeight="8dp"
-            android:scrollbars="none"
-            android:clipToPadding="false"
-            android:paddingHorizontal="16dp" />
-
-        <TextView
-            android:id="@+id/empty_view"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:text="暂无音乐，请点击添加音乐按钮"
-            android:textSize="16sp"
-            android:textColor="#666666"
-            android:gravity="center"
-            android:visibility="gone" />
 
 
 

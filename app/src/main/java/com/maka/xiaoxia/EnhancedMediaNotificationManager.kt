@@ -41,7 +41,7 @@ class EnhancedMediaNotificationManager(private val context: Context) {
     
     init {
         createNotificationChannel()
-        createMediaSession()
+        initializeMediaSession()
     }
     
     /**
@@ -106,21 +106,67 @@ class EnhancedMediaNotificationManager(private val context: Context) {
     }
     
     /**
-     * 创建媒体会话 - 支持系统级媒体控制
+     * 初始化媒体会话 - 支持系统级媒体控制（Android 15/16兼容）
      */
-    private fun createMediaSession() {
+    private fun initializeMediaSession() {
         mediaSession = MediaSessionCompat(context, "XiaoxiaMusic").apply {
             setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or
-                     MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS)
+                     MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS or
+                     MediaSessionCompat.FLAG_HANDLES_QUEUE_COMMANDS)
             
-            // 设置播放状态
-            setPlaybackState(PlaybackStateCompat.Builder()
-                .setActions(PlaybackStateCompat.ACTION_PLAY_PAUSE or
-                           PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-                           PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
-                           PlaybackStateCompat.ACTION_STOP)
-                .setState(PlaybackStateCompat.STATE_NONE, 0, 1.0f)
-                .build())
+            // 设置播放状态 - 适配Android 15/16
+            val playbackState = PlaybackStateCompat.Builder()
+                .setActions(
+                    PlaybackStateCompat.ACTION_PLAY or
+                    PlaybackStateCompat.ACTION_PAUSE or
+                    PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+                    PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
+                    PlaybackStateCompat.ACTION_STOP or
+                    PlaybackStateCompat.ACTION_SEEK_TO
+                )
+                .setState(PlaybackStateCompat.STATE_PAUSED, 0, 1.0f)
+                .build()
+            
+            setPlaybackState(playbackState)
+            
+            // 确保会话激活 - 修复Android 15/16系统控制中心
+            isActive = true
+            
+            // 设置媒体会话回调，确保系统控制中心响应
+            setCallback(object : MediaSessionCompat.Callback() {
+                override fun onPlay() {
+                    super.onPlay()
+                    // 通知MusicService处理播放
+                    val intent = Intent(context, MusicService::class.java).apply {
+                        action = MusicService.ACTION_PLAY_PAUSE
+                    }
+                    context.startService(intent)
+                }
+
+                override fun onPause() {
+                    super.onPause()
+                    val intent = Intent(context, MusicService::class.java).apply {
+                        action = MusicService.ACTION_PLAY_PAUSE
+                    }
+                    context.startService(intent)
+                }
+
+                override fun onSkipToNext() {
+                    super.onSkipToNext()
+                    val intent = Intent(context, MusicService::class.java).apply {
+                        action = MusicService.ACTION_NEXT
+                    }
+                    context.startService(intent)
+                }
+
+                override fun onSkipToPrevious() {
+                    super.onSkipToPrevious()
+                    val intent = Intent(context, MusicService::class.java).apply {
+                        action = MusicService.ACTION_PREVIOUS
+                    }
+                    context.startService(intent)
+                }
+            })
         }
     }
     
@@ -476,6 +522,16 @@ class EnhancedMediaNotificationManager(private val context: Context) {
         }
     }
     
+    /**
+     * 创建媒体会话（公开方法，供MusicService调用）
+     */
+    fun createMediaSession() {
+        if (mediaSession == null) {
+            // 调用私有的媒体会话创建方法
+            initializeMediaSession()
+        }
+    }
+
     /**
      * 更新媒体元数据
      */

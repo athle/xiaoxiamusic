@@ -63,8 +63,13 @@
         <!-- 后台音乐服务 -->
         <service android:name=".MusicService"
             android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="mediaPlayback" />
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback">
+            <!-- 添加媒体浏览器服务声明，支持系统媒体控制 -->
+            <intent-filter>
+                <action android:name="android.media.browse.MediaBrowserService" />
+            </intent-filter>
+        </service>
         
         <!-- 音乐播放小组件 - 标准版 -->
         <receiver android:name=".MusicWidgetProvider"
