@@ -43,9 +43,9 @@ import com.maka.xiaoxia.LyricLine
 import com.maka.xiaoxia.LyricsView
 import com.maka.xiaoxia.PreferenceHelper
 import com.maka.xiaoxia.PermissionHelper
-import com.maka.xiaoxia.MusicScanner
+// 扫描功能已移除 - MusicScanner导入已删除
 import com.maka.xiaoxia.SwipeSongAdapter
-import com.maka.xiaoxia.MusicScanner.ScanOptions
+// 扫描功能已移除 - ScanOptions导入已删除
 import java.io.File
 import java.util.concurrent.TimeUnit
 import android.appwidget.AppWidgetManager
@@ -87,7 +87,7 @@ class MainActivity : AppCompatActivity() {
     private var handler = Handler()
     private var updateSeekBarRunnable: Runnable? = null
     private var preferenceHelper: PreferenceHelper? = null
-    private var scanSettings: ScanSettings? = null
+    // 扫描功能已移除 - scanSettings变量已删除
     private var drawerLayout: DrawerLayout? = null
     private var currentLyrics: List<LyricLine> = emptyList()
     
@@ -178,7 +178,7 @@ class MainActivity : AppCompatActivity() {
 
             // 初始化PreferenceHelper
             preferenceHelper = PreferenceHelper(this)
-            scanSettings = ScanSettings(this)
+            // 扫描功能已移除 - ScanSettings初始化已删除
             
             // 安全地初始化视图
             drawerLayout = findViewById(R.id.drawer_layout)
@@ -528,84 +528,39 @@ class MainActivity : AppCompatActivity() {
         emptyView?.text = "正在扫描音乐文件..."
         emptyView?.visibility = View.VISIBLE
         
-        // 使用异步线程加载音乐数据，避免阻塞主线程
+        // 扫描功能已移除 - 不再自动扫描音乐
+        // 应用启动时显示空列表，等待用户手动添加歌曲
         Thread {
-            try {
-                val options = scanSettings?.getScanOptions() ?: ScanOptions()
-                val scannedSongs = MusicScanner.scanMusic(this, options)
+            runOnUiThread {
+                emptyView?.visibility = View.VISIBLE
+                songListView?.visibility = View.GONE
+                emptyView?.text = "没有音乐文件\n请手动添加歌曲到播放列表"
                 
-                Log.d(TAG, "扫描到 ${scannedSongs.size} 首歌曲 (模式: ${scanSettings?.getScanMode()})")
+                // 清空现有列表
+                songList.clear()
+                updateSongList()
+                updateViewsVisibility()
                 
-                // 回到主线程更新UI
-                runOnUiThread {
-                    if (scannedSongs.isEmpty()) {
-                        // 如果当前扫描模式没有找到歌曲，提示用户
-                        emptyView?.text = "没有找到音乐文件\n点击设置调整扫描模式"
-                        emptyView?.setOnClickListener {
-                            showScanSettingsDialog()
-                        }
-                    } else {
-                        songList.addAll(scannedSongs)
-                        emptyView?.setOnClickListener(null)
-                        
-                        // 保存新的音乐列表
-                        preferenceHelper?.saveSongList(songList)
-                        
-                        // 同步歌曲列表到服务
-                        saveSongsToServicePrefs()
-                        if (isServiceBound && musicService != null) {
-                            musicService?.setSongList(songList)
-                            Log.d(TAG, "已同步歌曲列表到服务，共 ${songList.size} 首歌曲")
-                        }
-                        
-                        Log.d(TAG, "加载完成，共找到 ${songList.size} 首歌曲")
-                    }
-                    
-                    updateSongList()
+                // 保存空列表到服务
+                saveSongsToServicePrefs()
+                if (isServiceBound && musicService != null) {
+                    musicService?.setSongList(songList)
                 }
                 
-            } catch (e: Exception) {
-                Log.e(TAG, "加载音乐列表失败: ${e.message}")
-                runOnUiThread {
-                    Toast.makeText(this, "加载音乐失败: ${e.message}", Toast.LENGTH_SHORT).show()
-                    emptyView?.text = "加载音乐失败\n${e.message}"
-                    updateSongList()
-                }
+                Log.d(TAG, "音乐列表已清空，等待用户手动添加歌曲")
             }
         }.start()
     }
     
-    private fun showScanSettingsDialog() {
-        val modes = arrayOf("智能扫描", "快速扫描", "完整扫描", "自定义扫描")
-        val modeValues = arrayOf(ScanSettings.MODE_SMART, ScanSettings.MODE_QUICK, ScanSettings.MODE_FULL, ScanSettings.MODE_CUSTOM)
-        val currentMode = scanSettings?.getScanMode() ?: ScanSettings.MODE_SMART
-        val currentIndex = modeValues.indexOf(currentMode)
-        
-        android.app.AlertDialog.Builder(this)
-            .setTitle("选择扫描模式")
-            .setSingleChoiceItems(modes, currentIndex) { dialog, which ->
-                scanSettings?.setScanMode(modeValues[which])
-                dialog.dismiss()
-                loadMusicList()
-            }
-            .setNegativeButton("取消", null)
-            .show()
-    }
+    // showScanSettingsDialog() 方法已移除 - 删除扫描设置功能
     
     override fun onCreateOptionsMenu(menu: android.view.Menu): Boolean {
-        menu.add(0, 1, 0, "扫描设置")
-            .setIcon(android.R.drawable.ic_menu_preferences)
-            .setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS)
+        // 移除扫描设置菜单项
         return true
     }
     
     override fun onOptionsItemSelected(item: android.view.MenuItem): Boolean {
-        when (item.itemId) {
-            1 -> {
-                showScanSettingsDialog()
-                return true
-            }
-        }
+        // 移除扫描设置相关处理
         return super.onOptionsItemSelected(item)
     }
     
@@ -623,7 +578,7 @@ class MainActivity : AppCompatActivity() {
             }
             
             findViewById<ImageButton>(R.id.btn_settings)?.setOnClickListener {
-                showScanSettingsDialog()
+                // 设置功能已移除扫描选项
                 drawerLayout?.closeDrawer(GravityCompat.START)
             }
             
@@ -658,8 +613,7 @@ class MainActivity : AppCompatActivity() {
                             drawerLayout?.closeDrawer(GravityCompat.START)
                         }
                         2 -> {
-                            // 设置
-                            showScanSettingsDialog()
+                            // 设置功能已移除扫描选项
                             drawerLayout?.closeDrawer(GravityCompat.START)
                         }
                         3 -> {
@@ -724,32 +678,8 @@ class MainActivity : AppCompatActivity() {
             }
 
             REQUEST_IMPORT_FOLDER_LEGACY -> {
-                if (resultCode == Activity.RESULT_OK) {
-                    data?.data?.let { uri ->
-                        // 安卓4.4兼容：从单个文件获取文件夹路径
-                        val path = getRealPathFromUri(uri)
-                        if (path != null) {
-                            val folderPath = File(path).parent
-                            if (folderPath != null) {
-                                val scanOptions = MusicScanner.ScanOptions(
-                                    includePath = listOf(folderPath),
-                                    excludePath = emptyList()
-                                )
-                                
-                                val newSongs = MusicScanner.scanMusic(this, scanOptions)
-                                
-                                if (newSongs.isNotEmpty()) {
-                                    val addedCount = addSongsToPlaylist(newSongs)
-                                    Toast.makeText(this, "已添加 $addedCount 首歌曲到播放列表", Toast.LENGTH_SHORT).show()
-                                    updateSongList()
-                                    updateViewsVisibility()
-                                } else {
-                                    Toast.makeText(this, "文件夹中没有找到音乐文件", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        }
-                    }
-                }
+                // 扫描功能已移除 - 不再处理文件夹导入
+                Toast.makeText(this, "扫描功能已移除", Toast.LENGTH_SHORT).show()
             }
             REQUEST_ADD_SINGLE_LEGACY -> {
                 if (resultCode == Activity.RESULT_OK) {
@@ -1269,145 +1199,15 @@ class MainActivity : AppCompatActivity() {
         return "/storage/emulated/0/Music"
     }
 
-    private fun showManualPathInputDialog() {
-        val input = EditText(this).apply {
-            inputType = InputType.TYPE_CLASS_TEXT
-            hint = "/storage/emulated/0/Music"
-            setText("/storage/emulated/0/Music")
-        }
+    // showManualPathInputDialog() 方法已移除 - 删除扫描功能
 
-        AlertDialog.Builder(this)
-            .setTitle("输入音乐文件夹路径")
-            .setMessage("请输入包含音乐文件的文件夹路径：")
-            .setView(input)
-            .setPositiveButton("确定") { _, _ ->
-                val path = input.text.toString()
-                if (path.isNotEmpty()) {
-                    scanMusicFromPath(path)
-                }
-            }
-            .setNeutralButton("扫描常用目录") { _, _ ->
-                scanCommonMusicDirectories()
-            }
-            .setNegativeButton("取消", null)
-            .show()
-    }
+    // scanMusicFromPath() 方法已移除 - 删除扫描功能
 
-    private fun scanMusicFromPath(path: String) {
-        try {
-            val folder = File(path)
-            if (!folder.exists() || !folder.isDirectory) {
-                Toast.makeText(this, "路径不存在或不是文件夹: $path", Toast.LENGTH_SHORT).show()
-                return
-            }
+    // scanCommonMusicDirectories() 方法已移除 - 删除扫描功能
 
-            // 检查是否有读取权限
-            if (!folder.canRead()) {
-                Toast.makeText(this, "没有读取权限，尝试扫描可访问目录", Toast.LENGTH_SHORT).show()
-                scanCommonMusicDirectories()
-                return
-            }
+    // scanCommonMusicDirectoriesForSingleFile() 方法已移除 - 删除扫描功能
 
-            val scanOptions = MusicScanner.ScanOptions(
-                includePath = listOf(path),
-                excludePath = emptyList()
-            )
-            val newSongs = MusicScanner.scanMusic(this, scanOptions)
-            
-            if (newSongs.isNotEmpty()) {
-                val addedCount = addSongsToPlaylist(newSongs)
-                Toast.makeText(this, "已添加 $addedCount 首歌曲到播放列表", Toast.LENGTH_SHORT).show()
-                updateSongList()
-                updateViewsVisibility()
-            } else {
-                Toast.makeText(this, "文件夹中没有找到音乐文件，尝试扫描其他目录", Toast.LENGTH_SHORT).show()
-                scanCommonMusicDirectories()
-            }
-            
-        } catch (e: Exception) {
-            Log.e(TAG, "扫描文件夹失败: ${e.message}")
-            Toast.makeText(this, "扫描失败，尝试扫描常用目录", Toast.LENGTH_SHORT).show()
-            scanCommonMusicDirectories()
-        }
-    }
-
-    private fun scanCommonMusicDirectories() {
-        val commonPaths = listOf(
-            "/storage/emulated/0/Music",
-            "/storage/emulated/0/Download",
-            "/storage/emulated/0/Music/Download",
-            "/sdcard/Music",
-            "/sdcard/Download",
-            "/storage/sdcard0/Music",
-            "/storage/sdcard0/Download",
-            "/mnt/sdcard/Music",
-            "/mnt/sdcard/Download"
-        )
-
-        AlertDialog.Builder(this)
-            .setTitle("选择扫描方式")
-            .setItems(arrayOf("扫描所有可用目录", "选择特定目录", "自定义路径")) { _, which ->
-                when (which) {
-                    0 -> scanAllAvailableStorage()
-                    1 -> showDirectorySelection(commonPaths)
-                    2 -> showManualPathInputDialog()
-                }
-            }
-            .show()
-    }
-
-    private fun scanCommonMusicDirectoriesForSingleFile() {
-        val commonPaths = listOf(
-            "/storage/emulated/0/Music",
-            "/storage/emulated/0/Download",
-            "/storage/emulated/0/Music/Download",
-            "/sdcard/Music",
-            "/sdcard/Download",
-            "/storage/sdcard0/Music",
-            "/storage/sdcard0/Download",
-            "/mnt/sdcard/Music",
-            "/mnt/sdcard/Download"
-        )
-
-        AlertDialog.Builder(this)
-            .setTitle("选择音乐目录")
-            .setItems(commonPaths.toTypedArray() as Array<CharSequence>) { _, which ->
-                scanSingleFileFromDirectory(commonPaths[which])
-            }
-            .setNegativeButton("自定义路径") { _, _ ->
-                showManualFilePathInputDialog()
-            }
-            .show()
-    }
-
-    private fun scanSingleFileFromDirectory(directoryPath: String) {
-        val directory = File(directoryPath)
-        if (!directory.exists() || !directory.isDirectory) {
-            Toast.makeText(this, "目录不存在: $directoryPath", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val musicExtensions = listOf(".mp3", ".m4a", ".flac", ".wav", ".aac", ".ogg", ".wma")
-        val musicFiles = directory.listFiles { file ->
-            file.isFile && musicExtensions.any { ext -> file.name.lowercase().endsWith(ext) }
-        }?.sortedBy { it.name }?.toTypedArray() ?: emptyArray<File>()
-
-        if (musicFiles.isEmpty()) {
-            Toast.makeText(this, "该目录中没有找到音乐文件", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val fileNames = musicFiles.map { it.name }.toTypedArray()
-
-        AlertDialog.Builder(this)
-            .setTitle("选择音乐文件")
-            .setItems(fileNames as Array<CharSequence>) { _, which ->
-                val selectedFile = musicFiles[which]
-                addSingleFileToPlaylist(selectedFile)
-            }
-            .setNegativeButton("取消", null)
-            .show()
-    }
+    // scanSingleFileFromDirectory() 方法已移除 - 删除扫描功能
 
     private fun addSingleFileToPlaylist(file: File) {
         try {
@@ -1585,99 +1385,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showManualFilePathInputDialog() {
-        val input = EditText(this).apply {
-            inputType = InputType.TYPE_CLASS_TEXT
-            hint = "/sdcard/Music/song.mp3"
-        }
+    // showManualFilePathInputDialog() 方法已移除 - 删除扫描功能
 
-        AlertDialog.Builder(this)
-            .setTitle("输入音乐文件路径")
-            .setMessage("请输入完整的音乐文件路径：")
-            .setView(input)
-            .setPositiveButton("添加") { _, _ ->
-                val filePath = input.text.toString().trim()
-                if (filePath.isNotEmpty()) {
-                    val file = File(filePath)
-                    if (file.exists() && file.isFile) {
-                        val musicExtensions = listOf(".mp3", ".m4a", ".flac", ".wav", ".aac", ".ogg", ".wma")
-                        val extension = file.extension.lowercase()
-                        if (musicExtensions.contains(".$extension")) {
-                            addSingleFileToPlaylist(file)
-                        } else {
-                            Toast.makeText(this, "不支持的文件格式", Toast.LENGTH_SHORT).show()
-                        }
-                    } else {
-                        Toast.makeText(this, "文件不存在: $filePath", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            }
-            .setNegativeButton("取消", null)
-            .show()
-    }
+    // showDirectorySelection() 方法已移除 - 删除扫描功能
 
-    private fun showDirectorySelection(commonPaths: List<String>) {
-        AlertDialog.Builder(this)
-            .setTitle("选择扫描目录")
-            .setItems(commonPaths.toTypedArray() as Array<CharSequence>) { _, which ->
-                scanMusicFromPath(commonPaths[which])
-            }
-            .setNegativeButton("返回") { _, _ ->
-                scanCommonMusicDirectories()
-            }
-            .show()
-    }
-
-    private fun scanAllAvailableStorage() {
-        val allPaths = listOf(
-            "/storage/emulated/0/Music",
-            "/storage/emulated/0/Download",
-            "/storage/emulated/0/Music/Download",
-            "/sdcard/Music",
-            "/sdcard/Download",
-            "/storage/sdcard0/Music",
-            "/storage/sdcard0/Download",
-            "/mnt/sdcard/Music",
-            "/mnt/sdcard/Download",
-            "/storage/external_sd/Music",
-            "/storage/external_sd/Download",
-            "/storage/usb0/Music",
-            "/storage/usb1/Music"
-        )
-
-        val songs = mutableListOf<Song>()
-        var totalScanned = 0
-        
-        Toast.makeText(this, "正在扫描所有可用存储...", Toast.LENGTH_LONG).show()
-
-        Thread {
-            allPaths.forEach { path ->
-                val file = File(path)
-                if (file.exists() && file.canRead()) {
-                    val scanOptions = MusicScanner.ScanOptions(
-                        includePath = listOf(path),
-                        excludePath = emptyList()
-                    )
-                    val newSongs = MusicScanner.scanMusic(this, scanOptions)
-                    songs.addAll(newSongs)
-                    totalScanned++
-                }
-            }
-
-            runOnUiThread {
-                if (songs.isNotEmpty()) {
-                    val uniqueSongs = songs.distinctBy { it.path }
-                    val addedCount = addSongsToPlaylist(uniqueSongs)
-                    Toast.makeText(this, "扫描完成！已添加 $addedCount 首歌曲", Toast.LENGTH_LONG).show()
-                    updateSongList()
-                    updateViewsVisibility()
-                } else {
-                    Toast.makeText(this, "未找到音乐文件，请尝试手动输入路径", Toast.LENGTH_LONG).show()
-                    showManualPathInputDialog()
-                }
-            }
-        }.start()
-    }
+    // scanAllAvailableStorage() 方法已移除 - 删除扫描功能
 
     private fun addSongsToPlaylist(newSongs: List<Song>): Int {
         var addedCount = 0

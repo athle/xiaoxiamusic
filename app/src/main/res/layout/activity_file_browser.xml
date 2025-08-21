@@ -3,7 +3,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@android:color/white">
+    android:background="@android:color/white"
+    android:fitsSystemWindows="true">
 
     <!-- 顶部路径栏 -->
     <LinearLayout
@@ -40,6 +41,17 @@
             android:textSize="12sp"
             android:padding="8dp"
             android:layout_marginStart="8dp" />
+
+        <Button
+            android:id="@+id/close_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="关闭"
+            android:textSize="12sp"
+            android:padding="8dp"
+            android:layout_marginStart="8dp"
+            android:background="@android:color/holo_red_light"
+            android:textColor="@android:color/white" />
 
     </LinearLayout>
 

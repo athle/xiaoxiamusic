@@ -1,11 +1,16 @@
 package com.maka.xiaoxia
 
+import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import java.io.File
@@ -18,13 +23,18 @@ class FileBrowserActivity : AppCompatActivity() {
     private lateinit var adapter: FileAdapter
     private lateinit var emptyView: TextView
     
-    private var currentPath: String = "/"
+    private var currentPath: String = "/sdcard"
     private val musicExtensions = listOf(".mp3", ".m4a", ".flac", ".wav", ".aac", ".ogg", ".wma")
     private val playlistExtensions = listOf(".m3u", ".m3u8")
+    private val PREFS_NAME = "FileBrowserPrefs"
+    private val LAST_PATH_KEY = "last_path"
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_file_browser)
+        
+        // 适配高版本安卓状态栏
+        setupSystemBars()
         
         // 初始化视图
         recyclerView = findViewById(R.id.file_list)
@@ -41,8 +51,14 @@ class FileBrowserActivity : AppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.title = "选择音乐文件"
         
-        // 设置起始路径为根目录，兼容所有Android版本
-        currentPath = "/"
+        // 加载上次使用的路径，默认为/sdcard
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        val savedPath = prefs.getString(LAST_PATH_KEY, "/sdcard")
+        currentPath = if (savedPath != null && File(savedPath).exists() && File(savedPath).isDirectory) {
+            savedPath
+        } else {
+            "/sdcard"
+        }
         loadFiles(currentPath)
         
         // 设置向上按钮
@@ -58,6 +74,12 @@ class FileBrowserActivity : AppCompatActivity() {
         val importAllButton = findViewById<Button>(R.id.import_all_button)
         importAllButton.setOnClickListener {
             importAllMusicFromCurrentFolder()
+        }
+
+        // 设置关闭按钮
+        val closeButton = findViewById<Button>(R.id.close_button)
+        closeButton.setOnClickListener {
+            finish()
         }
     }
     
@@ -114,6 +136,7 @@ class FileBrowserActivity : AppCompatActivity() {
         if (file.isDirectory) {
             currentPath = file.absolutePath
             loadFiles(currentPath)
+            saveCurrentPath()
         } else if (isPlaylistFile(file)) {
             // 处理播放列表文件
             val musicFiles = parsePlaylistFile(file)
@@ -149,6 +172,38 @@ class FileBrowserActivity : AppCompatActivity() {
         } else {
             super.onBackPressed()
         }
+    }
+
+    private fun setupSystemBars() {
+        // 使用传统的系统窗口适配方式，避免高版本多留空间
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            // 设置透明状态栏
+            window.statusBarColor = android.graphics.Color.TRANSPARENT
+            
+            // 设置状态栏图标为深色（适配浅色背景）
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                window.decorView.systemUiVisibility = 
+                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or 
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                    View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+            }
+        }
+        
+        // 对于高版本安卓，使用fitsSystemWindows自动处理
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            val rootView = findViewById<View>(android.R.id.content)
+            rootView.fitsSystemWindows = true
+        }
+    }
+
+    private fun saveCurrentPath() {
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        prefs.edit().putString(LAST_PATH_KEY, currentPath).apply()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        saveCurrentPath()
     }
     
     inner class FileAdapter : RecyclerView.Adapter<FileAdapter.FileViewHolder>() {
