@@ -106,7 +106,7 @@ object MusicScanner {
                 }
             }
             
-            Log.d("MusicScanner", "扫描完成，共找到 ${songs.size} 首符合条件的歌曲")
+
             
         } catch (e: Exception) {
             Log.e("MusicScanner", "扫描音乐失败: ${e.message}")

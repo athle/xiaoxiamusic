@@ -53,7 +53,7 @@ class CarMediaSessionManager(private val context: Context) {
             }
             
             isRegistered = true
-            Log.d(TAG, "媒体会话已创建并注册")
+            
             
         } catch (e: Exception) {
             Log.e(TAG, "创建媒体会话失败: ${e.message}")
@@ -73,7 +73,7 @@ class CarMediaSessionManager(private val context: Context) {
                 
                 remoteControlClient = null
                 isRegistered = false
-                Log.d(TAG, "媒体会话已释放")
+
             }
         } catch (e: Exception) {
             Log.e(TAG, "释放媒体会话失败: ${e.message}")
@@ -100,7 +100,7 @@ class CarMediaSessionManager(private val context: Context) {
                     apply()
                 }
                 
-                Log.d(TAG, "播放状态更新: ${if (isPlaying) "播放" else "暂停"}, 歌曲: $title - $artist")
+
                 
             } catch (e: Exception) {
                 Log.e(TAG, "更新播放状态失败: ${e.message}")

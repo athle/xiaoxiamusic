@@ -85,10 +85,7 @@ class ColorOS15MediaSessionManager(private val context: Context) {
                     .setState(PlaybackStateCompat.STATE_PAUSED, 0, 1.0f)
                     .build()
                 setPlaybackState(initialState)
-                
-                Log.d(TAG, "ColorOS 15 MediaSession已创建并激活")
             }
-            
         } catch (e: Exception) {
             Log.e(TAG, "创建ColorOS 15 MediaSession失败: ${e.message}")
         }
@@ -102,7 +99,6 @@ class ColorOS15MediaSessionManager(private val context: Context) {
             mediaSession?.let { session ->
                 session.isActive = false
                 session.release()
-                Log.d(TAG, "ColorOS 15 MediaSession已释放")
             }
             mediaSession = null
             isActive = false
@@ -141,10 +137,9 @@ class ColorOS15MediaSessionManager(private val context: Context) {
                 
                 if (!session.isActive) {
                     session.isActive = true
+                } else {
+                    // 会话已经激活，无需额外操作
                 }
-                
-                Log.d(TAG, "ColorOS 15播放状态更新: ${if (isPlaying) "播放" else "暂停"}")
-                
             } catch (e: Exception) {
                 Log.e(TAG, "更新ColorOS 15播放状态失败: ${e.message}")
             }
@@ -180,10 +175,9 @@ class ColorOS15MediaSessionManager(private val context: Context) {
                 
                 if (!session.isActive) {
                     session.isActive = true
+                } else {
+                    // 会话已经激活，无需额外操作
                 }
-                
-                Log.d(TAG, "ColorOS 15元数据更新: $title - $artist")
-                
             } catch (e: Exception) {
                 Log.e(TAG, "更新ColorOS 15元数据失败: ${e.message}")
             }
@@ -211,7 +205,7 @@ class ColorOS15MediaSessionManager(private val context: Context) {
         
         override fun onPlay() {
             super.onPlay()
-            Log.d(TAG, "ColorOS 15控制中心: 播放命令")
+
             // 通知MusicService处理播放
             val intent = Intent(context, MusicService::class.java).apply {
                 action = MusicService.ACTION_PLAY_PAUSE
@@ -221,7 +215,7 @@ class ColorOS15MediaSessionManager(private val context: Context) {
         
         override fun onPause() {
             super.onPause()
-            Log.d(TAG, "ColorOS 15控制中心: 暂停命令")
+
             // 通知MusicService处理暂停
             val intent = Intent(context, MusicService::class.java).apply {
                 action = MusicService.ACTION_PLAY_PAUSE
@@ -231,7 +225,7 @@ class ColorOS15MediaSessionManager(private val context: Context) {
         
         override fun onSkipToNext() {
             super.onSkipToNext()
-            Log.d(TAG, "ColorOS 15控制中心: 下一首命令")
+
             val intent = Intent(context, MusicService::class.java).apply {
                 action = MusicService.ACTION_NEXT
             }
@@ -240,7 +234,7 @@ class ColorOS15MediaSessionManager(private val context: Context) {
         
         override fun onSkipToPrevious() {
             super.onSkipToPrevious()
-            Log.d(TAG, "ColorOS 15控制中心: 上一首命令")
+
             val intent = Intent(context, MusicService::class.java).apply {
                 action = MusicService.ACTION_PREVIOUS
             }
@@ -249,7 +243,7 @@ class ColorOS15MediaSessionManager(private val context: Context) {
         
         override fun onStop() {
             super.onStop()
-            Log.d(TAG, "ColorOS 15控制中心: 停止命令")
+
             val intent = Intent(context, MusicService::class.java).apply {
                 action = MusicService.ACTION_STOP
             }
@@ -258,7 +252,7 @@ class ColorOS15MediaSessionManager(private val context: Context) {
         
         override fun onSeekTo(pos: Long) {
             super.onSeekTo(pos)
-            Log.d(TAG, "ColorOS 15控制中心: 跳转命令 - $pos")
+
             val intent = Intent(context, MusicService::class.java).apply {
                 action = MusicService.ACTION_SEEK_TO
                 putExtra("position", pos)

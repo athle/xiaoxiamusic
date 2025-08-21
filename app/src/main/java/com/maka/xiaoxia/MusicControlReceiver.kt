@@ -7,7 +7,7 @@ import android.util.Log
 
 class MusicControlReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        Log.d("MusicControl", "收到广播: ${intent.action}")
+
         
         // UPDATE_WIDGET广播不应该由MusicControlReceiver处理，直接忽略
         

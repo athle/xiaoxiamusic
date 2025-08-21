@@ -89,7 +89,7 @@ class MusicWidgetProvider : AppWidgetProvider() {
                     } else {
                         context.startService(serviceIntent)
                     }
-                    android.util.Log.d("MusicWidget", "成功启动音乐服务处理${intent.action}")
+
                 } catch (e: Exception) {
                     android.util.Log.e("MusicWidget", "启动服务失败: ${e.message}")
                     
@@ -106,14 +106,16 @@ class MusicWidgetProvider : AppWidgetProvider() {
                     
                     try {
                         context.startActivity(activityIntent)
-                        android.util.Log.d("MusicWidget", "成功启动MainActivity处理${intent.action}")
+
                     } catch (e2: Exception) {
                         android.util.Log.e("MusicWidget", "启动Activity失败: ${e2.message}")
                     }
                 }
             }
-            ACTION_UPDATE_WIDGET -> {
-                android.util.Log.d("MusicWidget", "收到UPDATE_WIDGET广播，立即更新UI")
+            ACTION_UPDATE_WIDGET, "com.maka.xiaoxia.UPDATE_ALL_COMPONENTS" -> {
+                // 支持统一广播和旧版本广播
+                val actionType = if (intent.action == "com.maka.xiaoxia.UPDATE_ALL_COMPONENTS") "统一广播" else "旧版本广播"
+                android.util.Log.d("MusicWidget", "收到$actionType，准备更新小组件")
                 
                 // 无论是否有直接数据，都强制使用广播中的最新数据
                 updateWidgetWithDirectData(context, intent)
@@ -237,7 +239,7 @@ class MusicWidgetProvider : AppWidgetProvider() {
             appWidgetManager.updateAppWidget(appWidgetId, views)
         }
         
-        android.util.Log.d("MusicWidget", "使用直接数据更新完成，小组件数量: ${appWidgetIds.size}")
+
     }
 
     private fun updateAppWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {

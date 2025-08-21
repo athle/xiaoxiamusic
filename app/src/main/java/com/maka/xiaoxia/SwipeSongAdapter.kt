@@ -60,21 +60,43 @@ class SwipeSongAdapter(
 
     private fun loadAlbumArt(song: Song, imageView: ImageView) {
         try {
-            if (song.albumId > 0) {
-                val albumArtUri = Uri.parse("content://media/external/audio/albumart")
-                val albumArtFullUri = ContentUris.withAppendedId(albumArtUri, song.albumId)
-                
-                val inputStream = context.contentResolver.openInputStream(albumArtFullUri)
-                val bitmap = BitmapFactory.decodeStream(inputStream)
+            // 直接从文件读取ID3标签封面
+            val retriever = MediaMetadataRetriever()
+            retriever.setDataSource(song.path)
+            
+            val art = retriever.embeddedPicture
+            if (art != null) {
+                val bitmap = BitmapFactory.decodeByteArray(art, 0, art.size)
                 if (bitmap != null) {
                     imageView.setImageBitmap(bitmap)
+                    retriever.release()
+                    return
+                }
+            }
+            
+            retriever.release()
+            
+            // 如果直接读取失败，尝试系统媒体库
+            try {
+                if (song.albumId > 0) {
+                    val albumArtUri = Uri.parse("content://media/external/audio/albumart")
+                    val albumArtFullUri = ContentUris.withAppendedId(albumArtUri, song.albumId)
+                    
+                    val inputStream = context.contentResolver.openInputStream(albumArtFullUri)
+                    val bitmap = BitmapFactory.decodeStream(inputStream)
+                    if (bitmap != null) {
+                        imageView.setImageBitmap(bitmap)
+                    } else {
+                        imageView.setImageResource(R.drawable.ic_music_default)
+                    }
+                    inputStream?.close()
                 } else {
                     imageView.setImageResource(R.drawable.ic_music_default)
                 }
-                inputStream?.close()
-            } else {
+            } catch (e: Exception) {
                 imageView.setImageResource(R.drawable.ic_music_default)
             }
+            
         } catch (e: Exception) {
             // 出错时使用默认图标
             imageView.setImageResource(R.drawable.ic_music_default)

@@ -42,7 +42,10 @@ class CarWidgetProvider : AppWidgetProvider() {
         super.onReceive(context, intent)
         
         when (intent.action) {
-            ACTION_UPDATE_CAR_WIDGET -> {
+            ACTION_UPDATE_CAR_WIDGET, "com.maka.xiaoxia.UPDATE_ALL_COMPONENTS" -> {
+                val actionType = if (intent.action == "com.maka.xiaoxia.UPDATE_ALL_COMPONENTS") "统一广播" else "车机专用广播"
+                android.util.Log.d("CarWidget", "收到$actionType，准备更新车机小组件")
+                
                 val appWidgetManager = AppWidgetManager.getInstance(context)
                 val thisWidget = ComponentName(context, CarWidgetProvider::class.java)
                 val appWidgetIds = appWidgetManager.getAppWidgetIds(thisWidget)

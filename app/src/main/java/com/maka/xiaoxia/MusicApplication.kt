@@ -22,6 +22,6 @@ class MusicApplication : Application() {
             }
         }
         
-        Log.d("MusicApp", "应用启动 - Android版本: ${android.os.Build.VERSION.SDK_INT}")
+
     }
 }

@@ -32,6 +32,7 @@ import android.widget.ImageView
 import android.widget.ListView
 import android.widget.Button
 import android.widget.ArrayAdapter
+import android.widget.PopupMenu
 import androidx.appcompat.app.AppCompatActivity
 import androidx.drawerlayout.widget.DrawerLayout
 import androidx.appcompat.app.AlertDialog
@@ -106,9 +107,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val TAG = "MainActivity"
         private const val REQUEST_CODE_PICK_MUSIC = 1001
-        private const val REQUEST_IMPORT_M3U = 1002
-        private const val TAG = "SimpleMusicPlayer"
+        private const val REQUEST_ADD_SINGLE = 1003
+        private const val REQUEST_IMPORT_FOLDER_LEGACY = 1006
+        private const val REQUEST_ADD_SINGLE_LEGACY = 1007
+        private const val REQUEST_ADD_SINGLE_FILE_BROWSER = 1008
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -447,9 +451,10 @@ class MainActivity : AppCompatActivity() {
     private fun registerBroadcastReceiver() {
         if (!isReceiverRegistered) {
             val filter = IntentFilter().apply {
-                addAction("com.maka.xiaoxia.UPDATE_UI")
+                addAction("com.maka.xiaoxia.UPDATE_ALL_COMPONENTS") // 新的统一广播
+                addAction("com.maka.xiaoxia.UPDATE_UI") // 兼容旧版本
                 addAction("com.maka.xiaoxia.PLAYBACK_COMPLETE")
-                addAction("com.maka.xiaoxia.action.UPDATE_WIDGET") // 添加对小组件更新广播的监听
+                addAction("com.maka.xiaoxia.action.UPDATE_WIDGET") // 兼容旧版本
             }
             
             // 安卓14+需要指定RECEIVER_EXPORTED或RECEIVER_NOT_EXPORTED
@@ -681,68 +686,20 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun showPlaylistDialog() {
-        val options = arrayOf("导入M3U播放列表", "创建新播放列表", "管理播放列表")
+        val options = arrayOf("创建新播放列表", "管理播放列表", "清空当前列表")
         AlertDialog.Builder(this)
             .setTitle("播放列表管理")
             .setItems(options) { _, which ->
                 when (which) {
-                    0 -> importM3UPlaylist()
-                    1 -> createNewPlaylist()
-                    2 -> managePlaylists()
+                    0 -> createNewPlaylist()
+                    1 -> managePlaylists()
+                    2 -> clearCurrentPlaylist()
                 }
             }
             .show()
     }
     
-    private fun importM3UPlaylist() {
-        val intent = Intent(Intent.ACTION_GET_CONTENT)
-        intent.type = "*/*"
-        intent.addCategory(Intent.CATEGORY_OPENABLE)
-        startActivityForResult(intent, REQUEST_IMPORT_M3U)
-    }
 
-    private fun importM3UPlaylist(uri: Uri) {
-        try {
-            val inputStream = contentResolver.openInputStream(uri)
-            val reader = BufferedReader(InputStreamReader(inputStream))
-            val lines = reader.readLines()
-            reader.close()
-            
-            val playlistName = uri.lastPathSegment?.removeSuffix(".m3u") ?: "导入播放列表"
-            val songPaths = lines.filter { it.isNotEmpty() && !it.startsWith("#") }
-            
-            if (songPaths.isEmpty()) {
-                Toast.makeText(this, "播放列表为空", Toast.LENGTH_SHORT).show()
-                return
-            }
-            
-            // 创建播放列表
-            createPlaylist(playlistName)
-            
-            // 添加歌曲到播放列表
-            val playlistKey = "playlist_$playlistName"
-            val songIds = mutableSetOf<String>()
-            
-            for (path in songPaths) {
-                for (song in songList) {
-                    if (song.path == path) {
-                        songIds.add(song.id.toString())
-                        break
-                    }
-                }
-            }
-            
-            if (songIds.isNotEmpty()) {
-                preferenceHelper?.saveStringSet(playlistKey, songIds)
-                Toast.makeText(this, "已导入 ${songIds.size} 首歌曲到 $playlistName", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this, "未找到匹配的歌曲", Toast.LENGTH_SHORT).show()
-            }
-            
-        } catch (e: Exception) {
-            Toast.makeText(this, "导入失败: ${e.message}", Toast.LENGTH_SHORT).show()
-        }
-    }
     
 
 
@@ -750,18 +707,92 @@ class MainActivity : AppCompatActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         
         when (requestCode) {
-            REQUEST_IMPORT_M3U -> {
-                if (resultCode == Activity.RESULT_OK) {
-                    data?.data?.let { uri ->
-                        importPlaylistFromUri(uri)
-                    }
-                }
-            }
             REQUEST_CODE_PICK_MUSIC -> {
                 if (resultCode == Activity.RESULT_OK) {
                     // 处理选择音乐文件的逻辑
                     data?.data?.let { uri ->
                         addSongFromUri(uri)
+                    }
+                }
+            }
+            REQUEST_ADD_SINGLE -> {
+                if (resultCode == Activity.RESULT_OK) {
+                    data?.data?.let { uri ->
+                        addSongFromUri(uri)
+                    }
+                }
+            }
+
+            REQUEST_IMPORT_FOLDER_LEGACY -> {
+                if (resultCode == Activity.RESULT_OK) {
+                    data?.data?.let { uri ->
+                        // 安卓4.4兼容：从单个文件获取文件夹路径
+                        val path = getRealPathFromUri(uri)
+                        if (path != null) {
+                            val folderPath = File(path).parent
+                            if (folderPath != null) {
+                                val scanOptions = MusicScanner.ScanOptions(
+                                    includePath = listOf(folderPath),
+                                    excludePath = emptyList()
+                                )
+                                
+                                val newSongs = MusicScanner.scanMusic(this, scanOptions)
+                                
+                                if (newSongs.isNotEmpty()) {
+                                    val addedCount = addSongsToPlaylist(newSongs)
+                                    Toast.makeText(this, "已添加 $addedCount 首歌曲到播放列表", Toast.LENGTH_SHORT).show()
+                                    updateSongList()
+                                    updateViewsVisibility()
+                                } else {
+                                    Toast.makeText(this, "文件夹中没有找到音乐文件", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            REQUEST_ADD_SINGLE_LEGACY -> {
+                if (resultCode == Activity.RESULT_OK) {
+                    data?.data?.let { uri ->
+                        val path = getRealPathFromUri(uri)
+                        if (path != null) {
+                            val file = File(path)
+                            if (file.exists() && file.isFile) {
+                                addSingleFileToPlaylist(file)
+                            } else {
+                                Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            addSongFromUri(uri)
+                        }
+                    }
+                }
+            }
+            REQUEST_ADD_SINGLE_FILE_BROWSER -> {
+                if (resultCode == Activity.RESULT_OK) {
+                    val multipleFiles = data?.getBooleanExtra("multiple_files", false) ?: false
+                    if (multipleFiles) {
+                        // 处理多文件导入
+                        val filePaths = data?.getStringArrayExtra("selected_files")
+                        if (filePaths != null && filePaths.isNotEmpty()) {
+                            val files = filePaths.map { File(it) }.filter { it.exists() && it.isFile }
+                            if (files.isNotEmpty()) {
+                                addMultipleFilesToPlaylist(files)
+                            } else {
+                                Toast.makeText(this, "没有有效的音乐文件", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } else {
+                        // 处理单文件导入（原有逻辑）
+                        val filePath = data?.getStringExtra("selected_file")
+                        if (filePath != null) {
+                            val file = File(filePath)
+                            if (file.exists() && file.isFile) {
+                                addSingleFileToPlaylist(file)
+                            } else {
+                                Toast.makeText(this, "文件不存在: $filePath", Toast.LENGTH_SHORT).show()
+                            }
+                        }
                     }
                 }
             }
@@ -986,6 +1017,9 @@ class MainActivity : AppCompatActivity() {
                 togglePlaylistVisibility()
             }
             
+            // 设置播放列表管理按钮的点击监听器
+            setupPlaylistManagementControls()
+            
             // 加载保存的播放模式
             loadPlayMode()
             
@@ -1107,6 +1141,563 @@ class MainActivity : AppCompatActivity() {
         updatePlayModeIcon()
     }
 
+    private fun setupPlaylistManagementControls() {
+        try {
+            // 获取播放列表管理按钮
+            val btnAddSingle: ImageButton? = findViewById(R.id.btn_add_single)
+            val btnClearPlaylist: ImageButton? = findViewById(R.id.btn_clear_playlist)
+            val btnMoreOptions: ImageButton? = findViewById(R.id.btn_more_options)
+
+            btnAddSingle?.setOnClickListener {
+                addSingleMusicFile()
+            }
+
+            btnClearPlaylist?.setOnClickListener {
+                showClearPlaylistConfirmation()
+            }
+
+            btnMoreOptions?.setOnClickListener { view ->
+                showPlaylistMoreOptionsMenu(view)
+            }
+
+        } catch (e: Exception) {
+            Log.d(TAG, "播放列表管理按钮初始化失败: ${e.message}")
+        }
+    }
+
+    private fun addSingleMusicFile() {
+        // 使用真正的文件浏览器，支持按文件路径浏览
+        val intent = Intent(this, FileBrowserActivity::class.java)
+        startActivityForResult(intent, REQUEST_ADD_SINGLE_FILE_BROWSER)
+    }
+
+
+
+    private fun showClearPlaylistConfirmation() {
+        if (songList.isEmpty()) {
+            Toast.makeText(this, "播放列表已为空", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("清空播放列表")
+            .setMessage("确定要清空当前播放列表吗？")
+            .setPositiveButton("是") { _, _ ->
+                clearCurrentPlaylist()
+            }
+            .setNegativeButton("否", null)
+            .show()
+    }
+
+    private fun clearCurrentPlaylist() {
+        // 停止当前播放
+        if (isServiceBound) {
+            musicService?.stopService()
+        }
+        isPlaying = false
+        updatePlayPauseButton()
+        stopSeekBarUpdate()
+
+        // 清空列表
+        songList.clear()
+        currentSongIndex = 0
+
+        // 更新界面
+        updateSongList()
+        updateViewsVisibility()
+        updateCurrentSongInfo()
+
+        // 保存状态
+        saveCurrentState()
+
+        Toast.makeText(this, "播放列表已清空", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun showPlaylistMoreOptionsMenu(anchorView: View) {
+        val popupMenu = PopupMenu(this, anchorView)
+        popupMenu.menuInflater.inflate(R.menu.playlist_more_options, popupMenu.menu)
+        
+        popupMenu.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                R.id.action_create_playlist -> {
+                    createNewPlaylist()
+                    true
+                }
+                R.id.action_manage_playlists -> {
+                    managePlaylists()
+                    true
+                }
+                R.id.action_clear_playlist -> {
+                    clearCurrentPlaylist()
+                    true
+                }
+                else -> false
+            }
+        }
+        
+        popupMenu.show()
+    }
+
+
+
+
+
+    private fun getRealPathFromUri(uri: Uri): String? {
+        // 对于文件URI，使用传统方法
+        try {
+            var path: String? = null
+            val projection = arrayOf(MediaStore.Audio.Media.DATA)
+            val cursor = contentResolver.query(uri, projection, null, null, null)
+            cursor?.use {
+                if (it.moveToFirst()) {
+                    val columnIndex = it.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
+                    path = it.getString(columnIndex)
+                }
+            }
+            return path
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "获取路径失败: ${e.message}")
+            return null
+        }
+    }
+
+    private fun getFolderPathFromUri(uri: Uri): String? {
+        // 对于文件夹URI，直接返回一个有效路径
+        // 在实际应用中，这里应该解析URI为实际文件夹路径
+        // 简化处理：返回音乐文件夹路径
+        return "/storage/emulated/0/Music"
+    }
+
+    private fun showManualPathInputDialog() {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT
+            hint = "/storage/emulated/0/Music"
+            setText("/storage/emulated/0/Music")
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("输入音乐文件夹路径")
+            .setMessage("请输入包含音乐文件的文件夹路径：")
+            .setView(input)
+            .setPositiveButton("确定") { _, _ ->
+                val path = input.text.toString()
+                if (path.isNotEmpty()) {
+                    scanMusicFromPath(path)
+                }
+            }
+            .setNeutralButton("扫描常用目录") { _, _ ->
+                scanCommonMusicDirectories()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun scanMusicFromPath(path: String) {
+        try {
+            val folder = File(path)
+            if (!folder.exists() || !folder.isDirectory) {
+                Toast.makeText(this, "路径不存在或不是文件夹: $path", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            // 检查是否有读取权限
+            if (!folder.canRead()) {
+                Toast.makeText(this, "没有读取权限，尝试扫描可访问目录", Toast.LENGTH_SHORT).show()
+                scanCommonMusicDirectories()
+                return
+            }
+
+            val scanOptions = MusicScanner.ScanOptions(
+                includePath = listOf(path),
+                excludePath = emptyList()
+            )
+            val newSongs = MusicScanner.scanMusic(this, scanOptions)
+            
+            if (newSongs.isNotEmpty()) {
+                val addedCount = addSongsToPlaylist(newSongs)
+                Toast.makeText(this, "已添加 $addedCount 首歌曲到播放列表", Toast.LENGTH_SHORT).show()
+                updateSongList()
+                updateViewsVisibility()
+            } else {
+                Toast.makeText(this, "文件夹中没有找到音乐文件，尝试扫描其他目录", Toast.LENGTH_SHORT).show()
+                scanCommonMusicDirectories()
+            }
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "扫描文件夹失败: ${e.message}")
+            Toast.makeText(this, "扫描失败，尝试扫描常用目录", Toast.LENGTH_SHORT).show()
+            scanCommonMusicDirectories()
+        }
+    }
+
+    private fun scanCommonMusicDirectories() {
+        val commonPaths = listOf(
+            "/storage/emulated/0/Music",
+            "/storage/emulated/0/Download",
+            "/storage/emulated/0/Music/Download",
+            "/sdcard/Music",
+            "/sdcard/Download",
+            "/storage/sdcard0/Music",
+            "/storage/sdcard0/Download",
+            "/mnt/sdcard/Music",
+            "/mnt/sdcard/Download"
+        )
+
+        AlertDialog.Builder(this)
+            .setTitle("选择扫描方式")
+            .setItems(arrayOf("扫描所有可用目录", "选择特定目录", "自定义路径")) { _, which ->
+                when (which) {
+                    0 -> scanAllAvailableStorage()
+                    1 -> showDirectorySelection(commonPaths)
+                    2 -> showManualPathInputDialog()
+                }
+            }
+            .show()
+    }
+
+    private fun scanCommonMusicDirectoriesForSingleFile() {
+        val commonPaths = listOf(
+            "/storage/emulated/0/Music",
+            "/storage/emulated/0/Download",
+            "/storage/emulated/0/Music/Download",
+            "/sdcard/Music",
+            "/sdcard/Download",
+            "/storage/sdcard0/Music",
+            "/storage/sdcard0/Download",
+            "/mnt/sdcard/Music",
+            "/mnt/sdcard/Download"
+        )
+
+        AlertDialog.Builder(this)
+            .setTitle("选择音乐目录")
+            .setItems(commonPaths.toTypedArray() as Array<CharSequence>) { _, which ->
+                scanSingleFileFromDirectory(commonPaths[which])
+            }
+            .setNegativeButton("自定义路径") { _, _ ->
+                showManualFilePathInputDialog()
+            }
+            .show()
+    }
+
+    private fun scanSingleFileFromDirectory(directoryPath: String) {
+        val directory = File(directoryPath)
+        if (!directory.exists() || !directory.isDirectory) {
+            Toast.makeText(this, "目录不存在: $directoryPath", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val musicExtensions = listOf(".mp3", ".m4a", ".flac", ".wav", ".aac", ".ogg", ".wma")
+        val musicFiles = directory.listFiles { file ->
+            file.isFile && musicExtensions.any { ext -> file.name.lowercase().endsWith(ext) }
+        }?.sortedBy { it.name }?.toTypedArray() ?: emptyArray<File>()
+
+        if (musicFiles.isEmpty()) {
+            Toast.makeText(this, "该目录中没有找到音乐文件", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val fileNames = musicFiles.map { it.name }.toTypedArray()
+
+        AlertDialog.Builder(this)
+            .setTitle("选择音乐文件")
+            .setItems(fileNames as Array<CharSequence>) { _, which ->
+                val selectedFile = musicFiles[which]
+                addSingleFileToPlaylist(selectedFile)
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun addSingleFileToPlaylist(file: File) {
+        try {
+            // 先测试ID3标签解析
+            testId3Tags(file)
+            
+            val song = parseMusicFile(file)
+            if (song != null) {
+                songList.add(song)
+                updateSongList()
+                saveCurrentState()
+                Toast.makeText(this, "已添加: ${song.title}", Toast.LENGTH_SHORT).show()
+
+                // 如果播放列表为空，自动播放
+                if (songList.size == 1) {
+                    playSong(0)
+                }
+            } else {
+                Toast.makeText(this, "无法解析音乐文件信息", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, "添加失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            Log.e(TAG, "添加单个文件失败: ${e.message}")
+        }
+    }
+    
+    private fun addMultipleFilesToPlaylist(files: List<File>) {
+        val addedSongs = mutableListOf<Song>()
+        var failedCount = 0
+        
+        for (file in files) {
+            try {
+                val song = parseMusicFile(file)
+                if (song != null) {
+                    addedSongs.add(song)
+                } else {
+                    failedCount++
+                }
+            } catch (e: Exception) {
+                failedCount++
+                Log.e(TAG, "解析文件失败: ${file.name} - ${e.message}")
+            }
+        }
+        
+        if (addedSongs.isNotEmpty()) {
+            songList.addAll(addedSongs)
+            updateSongList()
+            saveCurrentState()
+            
+            val message = if (failedCount > 0) {
+                "成功导入 ${addedSongs.size} 首歌曲，${failedCount} 个文件导入失败"
+            } else {
+                "成功导入 ${addedSongs.size} 首歌曲"
+            }
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            
+            // 如果播放列表为空，自动播放第一首
+            if (currentSongIndex == 0 && songList.isNotEmpty() && !isPlaying) {
+                playSong(0)
+            }
+        } else {
+            Toast.makeText(this, "没有成功导入任何音乐文件", Toast.LENGTH_SHORT).show()
+        }
+    }
+    
+    private fun testId3Tags(file: File) {
+        try {
+            Log.d(TAG, "=== 测试ID3标签解析 ===")
+            Log.d(TAG, "测试文件: ${file.absolutePath}")
+            Log.d(TAG, "文件名: ${file.name}")
+            Log.d(TAG, "文件大小: ${file.length()} 字节")
+            
+            val retriever = MediaMetadataRetriever()
+            retriever.setDataSource(file.absolutePath)
+            
+            // 获取所有可能的元数据
+            val metadataKeys = listOf(
+                MediaMetadataRetriever.METADATA_KEY_TITLE to "标题",
+                MediaMetadataRetriever.METADATA_KEY_ARTIST to "艺术家", 
+                MediaMetadataRetriever.METADATA_KEY_ALBUM to "专辑",
+                MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST to "专辑艺术家",
+                MediaMetadataRetriever.METADATA_KEY_COMPOSER to "作曲家",
+                MediaMetadataRetriever.METADATA_KEY_DATE to "日期",
+                MediaMetadataRetriever.METADATA_KEY_DURATION to "时长",
+                MediaMetadataRetriever.METADATA_KEY_GENRE to "流派"
+            )
+            
+            metadataKeys.forEach { (key, name) ->
+                try {
+                    val value = retriever.extractMetadata(key)
+                    Log.d(TAG, "$name: $value")
+                } catch (e: Exception) {
+                    Log.d(TAG, "$name: 获取失败 - ${e.message}")
+                }
+            }
+            
+            // 检查封面
+            val art = retriever.embeddedPicture
+            if (art != null) {
+                Log.d(TAG, "找到封面数据: ${art.size} 字节")
+                
+                // 尝试不同的解码方式
+                try {
+                    val bitmap1 = BitmapFactory.decodeByteArray(art, 0, art.size)
+                    Log.d(TAG, "解码结果1: ${bitmap1 != null}")
+                    
+                    if (bitmap1 != null) {
+                        Log.d(TAG, "封面尺寸: ${bitmap1.width}x${bitmap1.height}")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "解码失败1: ${e.message}")
+                }
+                
+                // 检查图片格式
+                val options = BitmapFactory.Options().apply {
+                    inJustDecodeBounds = true
+                }
+                BitmapFactory.decodeByteArray(art, 0, art.size, options)
+                Log.d(TAG, "图片格式: ${options.outMimeType}, 尺寸: ${options.outWidth}x${options.outHeight}")
+                
+            } else {
+                Log.d(TAG, "未找到封面数据")
+            }
+            
+            retriever.release()
+            Log.d(TAG, "=== ID3标签测试完成 ===")
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "ID3标签测试失败: ${e.message}")
+            e.printStackTrace()
+        }
+    }
+
+    private fun parseMusicFile(file: File): Song? {
+        try {
+            val retriever = MediaMetadataRetriever()
+            retriever.setDataSource(file.absolutePath)
+            
+            // 获取元数据
+            val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE) 
+                ?: file.nameWithoutExtension
+            val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) 
+                ?: "未知艺术家"
+            val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) 
+                ?: "未知专辑"
+            val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+            val duration = durationStr?.toLongOrNull() ?: 0
+            
+            // 使用文件路径的哈希值作为albumId，确保一致性
+            val albumId = file.absolutePath.hashCode().toLong()
+            
+            retriever.release()
+            
+            return Song(
+                id = System.currentTimeMillis(),
+                title = title,
+                artist = artist,
+                album = album,
+                duration = duration,
+                path = file.absolutePath,
+                albumId = albumId
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "解析音乐文件元数据失败: ${e.message}")
+            // 如果解析失败，返回基础信息
+            return Song(
+                id = System.currentTimeMillis(),
+                title = file.nameWithoutExtension,
+                artist = "未知艺术家",
+                album = "未知专辑",
+                duration = 0,
+                path = file.absolutePath,
+                albumId = file.absolutePath.hashCode().toLong()
+            )
+        }
+    }
+
+    private fun showManualFilePathInputDialog() {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT
+            hint = "/sdcard/Music/song.mp3"
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("输入音乐文件路径")
+            .setMessage("请输入完整的音乐文件路径：")
+            .setView(input)
+            .setPositiveButton("添加") { _, _ ->
+                val filePath = input.text.toString().trim()
+                if (filePath.isNotEmpty()) {
+                    val file = File(filePath)
+                    if (file.exists() && file.isFile) {
+                        val musicExtensions = listOf(".mp3", ".m4a", ".flac", ".wav", ".aac", ".ogg", ".wma")
+                        val extension = file.extension.lowercase()
+                        if (musicExtensions.contains(".$extension")) {
+                            addSingleFileToPlaylist(file)
+                        } else {
+                            Toast.makeText(this, "不支持的文件格式", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        Toast.makeText(this, "文件不存在: $filePath", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun showDirectorySelection(commonPaths: List<String>) {
+        AlertDialog.Builder(this)
+            .setTitle("选择扫描目录")
+            .setItems(commonPaths.toTypedArray() as Array<CharSequence>) { _, which ->
+                scanMusicFromPath(commonPaths[which])
+            }
+            .setNegativeButton("返回") { _, _ ->
+                scanCommonMusicDirectories()
+            }
+            .show()
+    }
+
+    private fun scanAllAvailableStorage() {
+        val allPaths = listOf(
+            "/storage/emulated/0/Music",
+            "/storage/emulated/0/Download",
+            "/storage/emulated/0/Music/Download",
+            "/sdcard/Music",
+            "/sdcard/Download",
+            "/storage/sdcard0/Music",
+            "/storage/sdcard0/Download",
+            "/mnt/sdcard/Music",
+            "/mnt/sdcard/Download",
+            "/storage/external_sd/Music",
+            "/storage/external_sd/Download",
+            "/storage/usb0/Music",
+            "/storage/usb1/Music"
+        )
+
+        val songs = mutableListOf<Song>()
+        var totalScanned = 0
+        
+        Toast.makeText(this, "正在扫描所有可用存储...", Toast.LENGTH_LONG).show()
+
+        Thread {
+            allPaths.forEach { path ->
+                val file = File(path)
+                if (file.exists() && file.canRead()) {
+                    val scanOptions = MusicScanner.ScanOptions(
+                        includePath = listOf(path),
+                        excludePath = emptyList()
+                    )
+                    val newSongs = MusicScanner.scanMusic(this, scanOptions)
+                    songs.addAll(newSongs)
+                    totalScanned++
+                }
+            }
+
+            runOnUiThread {
+                if (songs.isNotEmpty()) {
+                    val uniqueSongs = songs.distinctBy { it.path }
+                    val addedCount = addSongsToPlaylist(uniqueSongs)
+                    Toast.makeText(this, "扫描完成！已添加 $addedCount 首歌曲", Toast.LENGTH_LONG).show()
+                    updateSongList()
+                    updateViewsVisibility()
+                } else {
+                    Toast.makeText(this, "未找到音乐文件，请尝试手动输入路径", Toast.LENGTH_LONG).show()
+                    showManualPathInputDialog()
+                }
+            }
+        }.start()
+    }
+
+    private fun addSongsToPlaylist(newSongs: List<Song>): Int {
+        var addedCount = 0
+        val existingPaths = songList.map { it.path }.toSet()
+        
+        for (song in newSongs) {
+            if (!existingPaths.contains(song.path)) {
+                songList.add(song)
+                addedCount++
+            }
+        }
+        
+        if (addedCount > 0) {
+            updateSongList()
+            saveCurrentState()
+        }
+        
+        return addedCount
+    }
+
     private fun togglePlaylistVisibility() {
         try {
             // 获取新的布局容器引用
@@ -1166,7 +1757,7 @@ class MainActivity : AppCompatActivity() {
             }
             
             totalTimeText?.text = formatTime(song.duration)
-            loadAlbumArt(song.albumId)
+            loadAlbumArtFromSong(song)
             loadLyrics(song)
         }
     }
@@ -1309,27 +1900,55 @@ class MainActivity : AppCompatActivity() {
     private fun loadAlbumArtFromSong(song: Song) {
         try {
             Log.d(TAG, "从歌曲文件加载专辑封面: ${song.title}")
+            Log.d(TAG, "文件路径: ${song.path}")
+            
+            val file = File(song.path)
+            if (!file.exists()) {
+                Log.e(TAG, "文件不存在: ${song.path}")
+                albumArtImage?.setImageResource(R.drawable.ic_music_default)
+                return
+            }
+            
+            if (!file.canRead()) {
+                Log.e(TAG, "没有读取权限: ${song.path}")
+                albumArtImage?.setImageResource(R.drawable.ic_music_default)
+                return
+            }
+            
+            Log.d(TAG, "文件大小: ${file.length()} 字节")
             
             val retriever = MediaMetadataRetriever()
             try {
                 // 设置数据源为歌曲文件路径
                 retriever.setDataSource(song.path)
                 
+                // 检查所有可用的元数据
+                val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
+                val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
+                val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM)
+                Log.d(TAG, "ID3标签 - 标题: $title, 艺术家: $artist, 专辑: $album")
+                
                 // 获取嵌入的专辑封面
                 val art = retriever.embeddedPicture
                 if (art != null) {
+                    Log.d(TAG, "找到ID3封面数据，大小: ${art.size} 字节")
                     val bitmap = BitmapFactory.decodeByteArray(art, 0, art.size)
                     if (bitmap != null) {
+                        Log.d(TAG, "成功解码封面图片: ${bitmap.width}x${bitmap.height}")
                         albumArtImage?.setImageBitmap(bitmap)
-                        Log.d(TAG, "成功从ID3标签加载专辑封面")
                         retriever.release()
                         return
+                    } else {
+                        Log.w(TAG, "封面数据解码失败")
                     }
+                } else {
+                    Log.w(TAG, "未找到ID3封面数据")
                 }
                 
                 retriever.release()
             } catch (e: Exception) {
                 Log.e(TAG, "从ID3标签加载专辑封面失败: ${e.message}")
+                e.printStackTrace()
                 try {
                     retriever.release()
                 } catch (releaseEx: Exception) {
@@ -1339,11 +1958,12 @@ class MainActivity : AppCompatActivity() {
             
         } catch (e: Exception) {
             Log.e(TAG, "加载专辑封面失败: ${e.message}")
+            e.printStackTrace()
         }
         
         // 使用默认图片
-            albumArtImage?.setImageResource(R.drawable.ic_music_default)
-            Log.d(TAG, "使用默认专辑封面")
+        albumArtImage?.setImageResource(R.drawable.ic_music_default)
+        Log.d(TAG, "使用默认专辑封面")
     }
 
     private fun startSeekBarUpdate() {
@@ -1490,19 +2110,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun createNewPlaylist() {
-        val editText = EditText(this)
-        AlertDialog.Builder(this)
-            .setTitle("创建新播放列表")
-            .setMessage("请输入播放列表名称：")
-            .setView(editText)
-            .setPositiveButton("创建") { _, _ ->
-                val playlistName = editText.text.toString().trim()
-                if (playlistName.isNotEmpty()) {
-                    createPlaylist(playlistName)
-                }
-            }
-            .setNegativeButton("取消", null)
-            .show()
+        showCreatePlaylistDialog()
     }
 
     fun managePlaylists() {
@@ -1531,9 +2139,7 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, "已创建播放列表: $name", Toast.LENGTH_SHORT).show()
     }
 
-    fun importPlaylistFromUri(uri: Uri) {
-        importM3UPlaylist(uri)
-    }
+
 
     fun addToPlaylist(song: Song, playlistName: String) {
         val playlistKey = "playlist_$playlistName"
@@ -1608,6 +2214,8 @@ class MainActivity : AppCompatActivity() {
         
         return result
     }
+
+    // 这个方法已被删除，使用上面的clearCurrentPlaylist方法
     
     private fun formatTime(millis: Long): String {
         val minutes = (millis / 1000) / 60
@@ -1632,9 +2240,9 @@ class MainActivity : AppCompatActivity() {
     private val uiUpdateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
-                "com.maka.xiaoxia.UPDATE_UI" -> {
-                    // 收到UI更新广播，优先使用广播中的数据
-                    Log.d(TAG, "收到UPDATE_UI广播，准备更新UI")
+                "com.maka.xiaoxia.UPDATE_ALL_COMPONENTS" -> {
+                    // 收到统一广播，优先使用广播中的数据
+                    Log.d(TAG, "收到统一广播，准备更新UI")
                     
                     // 从广播获取完整信息
                     val songIndex = intent.getIntExtra("current_song_index", -1)
@@ -1647,7 +2255,7 @@ class MainActivity : AppCompatActivity() {
                     val songDuration = intent.getLongExtra("current_duration", 0L)
                     val songCount = intent.getIntExtra("song_count", 0)
                     
-                    Log.d(TAG, "UPDATE_UI广播数据: 索引=$songIndex, 标题=$songTitle, 播放=$isPlaying")
+                    Log.d(TAG, "统一广播数据: 索引=$songIndex, 标题=$songTitle, 播放=$isPlaying")
                     
                     if (songIndex >= 0 && songIndex < songList.size) {
                         // 使用广播中的数据更新状态
@@ -1667,47 +2275,12 @@ class MainActivity : AppCompatActivity() {
                         
                         // 更新歌曲列表中的对应位置
                         songList[songIndex] = updatedSong
-                        Log.d(TAG, "从广播同步歌曲信息: $songTitle")
+                        Log.d(TAG, "从统一广播同步歌曲信息: $songTitle")
                         
                         updateUI()
-                        Log.d(TAG, "UPDATE_UI广播处理完成，当前歌曲: $songTitle, 索引: $songIndex")
+                        Log.d(TAG, "统一广播处理完成，当前歌曲: $songTitle, 索引: $songIndex")
                     } else if (isServiceBound) {
                         // 广播数据不完整，尝试从服务获取
-                        musicService?.let { service ->
-                                // 确保服务有最新的歌曲列表
-                                if (songList.isNotEmpty()) {
-                                    service.setSongList(songList)
-                                    Log.d(TAG, "服务绑定后同步歌曲列表，共 ${songList.size} 首")
-                                }
-                                
-                                currentSongIndex = service.getCurrentSongIndex()
-                                this@MainActivity.isPlaying = service.isPlaying()
-                                
-                                val currentSong = service.getCurrentSong()
-                                if (currentSong != null && currentSongIndex >= 0 && currentSongIndex < songList.size) {
-                                    songList[currentSongIndex] = currentSong
-                                    Log.d(TAG, "从服务同步歌曲信息: ${currentSong.title}")
-                                }
-                                
-                                updateUI()
-                                Log.d(TAG, "UPDATE_UI广播处理完成（从服务），当前歌曲: ${currentSong?.title}, 索引: $currentSongIndex")
-                            }
-                    } else {
-                        // 最后才从SharedPreferences获取
-                        loadSavedData()
-                        updateUI()
-                        Log.d(TAG, "服务未绑定，从SharedPreferences更新状态")
-                    }
-                }
-                "com.maka.xiaoxia.PLAYBACK_COMPLETE" -> {
-                    updateUI()
-                    Log.d(TAG, "收到播放完成广播")
-                }
-                "com.maka.xiaoxia.action.UPDATE_WIDGET" -> {
-                    // 处理小组件更新广播
-                    Log.d(TAG, "收到UPDATE_WIDGET广播")
-                    if (isServiceBound) {
-                        // 优先从服务获取状态
                         musicService?.let { service ->
                             currentSongIndex = service.getCurrentSongIndex()
                             this@MainActivity.isPlaying = service.isPlaying()
@@ -1715,23 +2288,45 @@ class MainActivity : AppCompatActivity() {
                             val currentSong = service.getCurrentSong()
                             if (currentSong != null && currentSongIndex >= 0 && currentSongIndex < songList.size) {
                                 songList[currentSongIndex] = currentSong
+                                Log.d(TAG, "从服务同步歌曲信息: ${currentSong.title}")
                             }
                             
                             updateUI()
-                            Log.d(TAG, "从UPDATE_WIDGET广播同步，当前歌曲: ${currentSong?.title}")
+                            Log.d(TAG, "统一广播处理完成（从服务），当前歌曲: ${currentSong?.title}, 索引: $currentSongIndex")
                         }
                     } else {
-                        // 备用：从广播获取基本信息
-                        val songIndex = intent.getIntExtra("current_song_index", 0)
-                        val isPlaying = intent.getBooleanExtra("is_playing", false)
-                        
-                        if (songIndex >= 0 && songIndex < songList.size) {
-                            currentSongIndex = songIndex
-                            this@MainActivity.isPlaying = isPlaying
-                            updateUI()
-                            Log.d(TAG, "从UPDATE_WIDGET广播获取基本信息，索引: $songIndex")
-                        }
+                        // 最后才从SharedPreferences获取
+                        loadSavedData()
+                        updateUI()
+                        Log.d(TAG, "服务未绑定，从SharedPreferences更新状态")
                     }
+                }
+                "com.maka.xiaoxia.UPDATE_UI", "com.maka.xiaoxia.action.UPDATE_WIDGET" -> {
+                    // 兼容旧版本广播
+                    Log.d(TAG, "收到旧版本广播: ${intent.action}")
+                    handleLegacyBroadcast()
+                }
+                "com.maka.xiaoxia.PLAYBACK_COMPLETE" -> {
+                    updateUI()
+                    Log.d(TAG, "收到播放完成广播")
+                }
+            }
+        }
+        
+        private fun handleLegacyBroadcast() {
+            // 兼容旧版本广播处理
+            if (isServiceBound) {
+                musicService?.let { service ->
+                    currentSongIndex = service.getCurrentSongIndex()
+                    this@MainActivity.isPlaying = service.isPlaying()
+                    
+                    val currentSong = service.getCurrentSong()
+                    if (currentSong != null && currentSongIndex >= 0 && currentSongIndex < songList.size) {
+                        songList[currentSongIndex] = currentSong
+                    }
+                    
+                    updateUI()
+                    Log.d(TAG, "兼容模式处理完成，当前歌曲: ${currentSong?.title}")
                 }
             }
         }

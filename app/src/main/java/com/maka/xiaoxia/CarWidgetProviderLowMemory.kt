@@ -103,30 +103,20 @@ class CarWidgetProviderLowMemory : AppWidgetProvider() {
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         
-        android.util.Log.d("CarWidgetLowMemory", "车机低内存小组件收到广播: ${intent.action}")
-        
         when (intent.action) {
-            ACTION_UPDATE_CAR_WIDGET_LOW_MEMORY -> {
-                val appWidgetManager = AppWidgetManager.getInstance(context)
-                val thisWidget = ComponentName(context, CarWidgetProviderLowMemory::class.java)
-                val appWidgetIds = appWidgetManager.getAppWidgetIds(thisWidget)
-                
-                for (appWidgetId in appWidgetIds) {
-                    updateAppWidget(context, appWidgetManager, appWidgetId)
+            ACTION_UPDATE_CAR_WIDGET_LOW_MEMORY, ACTION_UPDATE_WIDGET, 
+            "com.maka.xiaoxia.UPDATE_ALL_COMPONENTS" -> {
+                val actionType = when (intent.action) {
+                    "com.maka.xiaoxia.UPDATE_ALL_COMPONENTS" -> "统一广播"
+                    ACTION_UPDATE_WIDGET -> "标准广播"
+                    else -> "车机低内存广播"
                 }
-            }
-            ACTION_UPDATE_WIDGET -> {
-                // 接收来自MusicService的标准广播，确保状态同步
-                android.util.Log.d("CarWidgetLowMemory", "收到标准UPDATE_WIDGET广播")
-                updateWidgetWithDirectData(context, intent)
-            }
-            ACTION_UPDATE_CAR_WIDGET_LOW_MEMORY -> {
-                android.util.Log.d("CarWidgetLowMemory", "收到车机低内存版小组件更新广播")
+                android.util.Log.d(TAG, "收到$actionType，准备更新车机低内存小组件")
+                
                 updateWidgetWithDirectData(context, intent)
             }
             AppWidgetManager.ACTION_APPWIDGET_UPDATE -> {
                 // 系统广播触发更新
-                android.util.Log.d("CarWidgetLowMemory", "收到系统APPWIDGET_UPDATE广播")
                 val appWidgetManager = AppWidgetManager.getInstance(context)
                 val thisWidget = ComponentName(context, CarWidgetProviderLowMemory::class.java)
                 val appWidgetIds = appWidgetManager.getAppWidgetIds(thisWidget)
@@ -178,7 +168,7 @@ class CarWidgetProviderLowMemory : AppWidgetProvider() {
         val coverPath = intent.getStringExtra("cover_path") ?: ""
         val coverAlbumId = intent.getLongExtra("cover_album_id", 0L)
         
-        android.util.Log.d("CarWidgetLowMemory", "使用直接数据更新车机低内存小组件: $title - $artist")
+
         
         // 获取所有小组件实例并更新
         val appWidgetManager = AppWidgetManager.getInstance(context)

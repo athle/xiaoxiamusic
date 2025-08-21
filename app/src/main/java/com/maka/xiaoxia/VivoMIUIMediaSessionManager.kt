@@ -57,7 +57,6 @@ class VivoMIUIMediaSessionManager(private val context: Context) {
                 // 强制激活会话
                 isActive = true
                 
-                Log.d(TAG, "Vivo MIUI MediaSession已创建并激活")
             }
             
         } catch (e: Exception) {
@@ -73,7 +72,6 @@ class VivoMIUIMediaSessionManager(private val context: Context) {
             mediaSession?.let { session ->
                 session.isActive = false
                 session.release()
-                Log.d(TAG, "Vivo MIUI MediaSession已释放")
             }
             mediaSession = null
         } catch (e: Exception) {
@@ -114,11 +112,9 @@ class VivoMIUIMediaSessionManager(private val context: Context) {
                     session.isActive = true
                 }
                 
-                Log.d(TAG, "Vivo MIUI播放状态更新: ${if (isPlaying) "播放" else "暂停"}")
                 
             } catch (e: Exception) {
-                Log.e(TAG, "更新Vivo MIUI播放状态失败: ${e.message}")
-            }
+                }
         }
     }
     
@@ -154,11 +150,9 @@ class VivoMIUIMediaSessionManager(private val context: Context) {
                     session.isActive = true
                 }
                 
-                Log.d(TAG, "Vivo MIUI元数据更新: $title - $artist")
                 
             } catch (e: Exception) {
-                Log.e(TAG, "更新Vivo MIUI元数据失败: ${e.message}")
-            }
+                }
         }
     }
     
@@ -197,7 +191,6 @@ class VivoMIUIMediaSessionManager(private val context: Context) {
         
         override fun onPlay() {
             super.onPlay()
-            Log.d(TAG, "Vivo MIUI控制中心: 播放命令")
             val intent = Intent(context, MusicService::class.java).apply {
                 action = MusicService.ACTION_PLAY_PAUSE
             }
@@ -206,7 +199,6 @@ class VivoMIUIMediaSessionManager(private val context: Context) {
         
         override fun onPause() {
             super.onPause()
-            Log.d(TAG, "Vivo MIUI控制中心: 暂停命令")
             val intent = Intent(context, MusicService::class.java).apply {
                 action = MusicService.ACTION_PLAY_PAUSE
             }
@@ -215,7 +207,6 @@ class VivoMIUIMediaSessionManager(private val context: Context) {
         
         override fun onSkipToNext() {
             super.onSkipToNext()
-            Log.d(TAG, "Vivo MIUI控制中心: 下一首命令")
             val intent = Intent(context, MusicService::class.java).apply {
                 action = MusicService.ACTION_NEXT
             }
@@ -224,7 +215,6 @@ class VivoMIUIMediaSessionManager(private val context: Context) {
         
         override fun onSkipToPrevious() {
             super.onSkipToPrevious()
-            Log.d(TAG, "Vivo MIUI控制中心: 上一首命令")
             val intent = Intent(context, MusicService::class.java).apply {
                 action = MusicService.ACTION_PREVIOUS
             }
@@ -233,7 +223,6 @@ class VivoMIUIMediaSessionManager(private val context: Context) {
         
         override fun onStop() {
             super.onStop()
-            Log.d(TAG, "Vivo MIUI控制中心: 停止命令")
             val intent = Intent(context, MusicService::class.java).apply {
                 action = MusicService.ACTION_STOP
             }
@@ -242,7 +231,6 @@ class VivoMIUIMediaSessionManager(private val context: Context) {
         
         override fun onSeekTo(pos: Long) {
             super.onSeekTo(pos)
-            Log.d(TAG, "Vivo MIUI控制中心: 跳转命令 - $pos")
             val intent = Intent(context, MusicService::class.java).apply {
                 action = MusicService.ACTION_SEEK_TO
                 putExtra("position", pos)

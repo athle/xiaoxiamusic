@@ -857,67 +857,48 @@ class MusicService : Service() {
         
         val currentSong = songList.getOrNull(currentSongIndex)
         
-        // 创建广播数据 - 使用直接数据传递，避免SharedPreferences延迟
-        val broadcastData = Intent(ACTION_UPDATE_WIDGET).apply {
+        // 创建统一的广播数据 - 合并所有组件更新
+        val unifiedBroadcastData = Intent("com.maka.xiaoxia.UPDATE_ALL_COMPONENTS").apply {
+            // 核心播放信息
             putExtra("is_playing", isPlaying)
+            putExtra("current_song_index", currentSongIndex)
+            putExtra("song_count", songList.size)
+            
+            // 歌曲详细信息
             putExtra("current_title", currentSong?.title ?: "未知歌曲")
             putExtra("current_artist", currentSong?.artist ?: "未知艺术家")
+            putExtra("current_album", currentSong?.album ?: "")
             putExtra("current_path", currentSong?.path ?: "")
             putExtra("current_album_id", currentSong?.albumId ?: 0L)
-            putExtra("current_album", currentSong?.album ?: "")
+            putExtra("current_duration", currentSong?.duration ?: 0L)
             putExtra("current_lyrics", currentSong?.lyrics ?: "")
-            putExtra("current_song_index", currentSongIndex)
             
-            // 直接传递封面数据，避免从SharedPreferences读取的延迟
+            // 封面信息
             putExtra("cover_path", currentSong?.path ?: "")
             putExtra("cover_album_id", currentSong?.albumId ?: 0L)
             
-            // 添加时间戳确保广播的唯一性
+            // 广播标识和时间戳
             putExtra("update_timestamp", System.currentTimeMillis())
+            putExtra("broadcast_type", "unified_update")
         }
         
-        // 立即发送广播给所有接收者（包括MainActivity和小组件）
-        sendBroadcast(broadcastData)
-        Log.d("MusicService", "已发送UPDATE_WIDGET广播，当前歌曲: ${currentSong?.title}, 索引: $currentSongIndex")
+        // 发送统一广播给所有组件
+        sendBroadcast(unifiedBroadcastData)
+        Log.d("MusicService", "已发送统一广播，歌曲: ${currentSong?.title}, 索引: $currentSongIndex")
         
-        // 立即发送系统广播，确保小组件及时更新
+        // 发送系统小组件更新广播（兼容旧版本）
         val widgetUpdateIntent = Intent(AppWidgetManager.ACTION_APPWIDGET_UPDATE).apply {
             component = ComponentName(this@MusicService, MusicWidgetProvider::class.java)
         }
         sendBroadcast(widgetUpdateIntent)
-        Log.d("MusicService", "立即发送系统小组件更新广播")
         
-        // 车机专用小组件更新
+        // 发送车机专用广播（兼容旧版本）
         val carWidgetUpdateIntent = Intent("com.maka.xiaoxia.action.UPDATE_CAR_WIDGET")
         sendBroadcast(carWidgetUpdateIntent)
-        Log.d("MusicService", "已发送车机专用小组件更新广播")
         
-        // 车机低内存版小组件更新 - 参考小侠音乐小组件实现方式
-        val carWidgetLowMemoryUpdateIntent = Intent("com.maka.xiaoxia.action.UPDATE_CAR_WIDGET_LOW_MEMORY").apply {
-            putExtra("is_playing", isPlaying)
-            putExtra("current_title", currentSong?.title ?: "未知歌曲")
-            putExtra("current_artist", currentSong?.artist ?: "未知艺术家")
-            putExtra("cover_path", currentSong?.path ?: "")
-            putExtra("cover_album_id", currentSong?.albumId ?: 0L)
-            putExtra("update_timestamp", System.currentTimeMillis())
-        }
+        // 发送车机低内存版广播（兼容旧版本）
+        val carWidgetLowMemoryUpdateIntent = Intent("com.maka.xiaoxia.action.UPDATE_CAR_WIDGET_LOW_MEMORY")
         sendBroadcast(carWidgetLowMemoryUpdateIntent)
-        Log.d("MusicService", "已发送车机低内存版小组件更新广播")
-        
-        // 发送一个专门的UI更新广播给MainActivity
-        val uiUpdateIntent = Intent("com.maka.xiaoxia.UPDATE_UI").apply {
-            putExtra("current_song_index", currentSongIndex)
-            putExtra("is_playing", isPlaying)
-            putExtra("current_title", currentSong?.title ?: "未知歌曲")
-            putExtra("current_artist", currentSong?.artist ?: "未知艺术家")
-            putExtra("current_album", currentSong?.album ?: "未知专辑")
-            putExtra("current_path", currentSong?.path ?: "")
-            putExtra("current_album_id", currentSong?.albumId ?: 0L)
-            putExtra("current_duration", currentSong?.duration ?: 0L)
-            putExtra("song_count", songList.size)
-        }
-        sendBroadcast(uiUpdateIntent)
-        Log.d("MusicService", "已发送UPDATE_UI广播给MainActivity")
     }
     
     // 添加服务绑定功能

@@ -50,6 +50,13 @@
             </intent-filter>
         </activity>
         
+        <!-- 文件浏览器Activity - 真正的文件管理器界面 -->
+        <activity
+            android:name="com.maka.xiaoxia.FileBrowserActivity"
+            android:exported="false"
+            android:label="选择音乐文件"
+            android:theme="@style/Theme.XiaoxiaMusic" />
+        
         <!-- 小组件配置活动 - 安卓4.4兼容性修复 -->
         <activity
             android:name="com.maka.xiaoxia.widget.WidgetConfigActivity"
