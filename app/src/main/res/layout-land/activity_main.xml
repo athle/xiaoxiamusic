@@ -173,7 +173,7 @@
                         android:layout_width="36dp"
                         android:layout_height="36dp"
                         android:background="?attr/selectableItemBackgroundBorderless"
-                        android:src="@android:drawable/ic_menu_sort_by_size"
+                        android:src="@drawable/ic_menu_sort"
                         android:layout_marginEnd="8dp" />
 
                     <!-- 播放控制按钮 -->
@@ -189,7 +189,7 @@
                             android:layout_width="36dp"
                             android:layout_height="36dp"
                             android:background="?attr/selectableItemBackgroundBorderless"
-                            android:src="@android:drawable/ic_media_previous" />
+                            android:src="@drawable/ic_previous" />
 
                         <ImageButton
                             android:id="@+id/btn_play_pause"
@@ -205,7 +205,7 @@
                             android:layout_width="36dp"
                             android:layout_height="36dp"
                             android:background="?attr/selectableItemBackgroundBorderless"
-                            android:src="@android:drawable/ic_media_next" />
+                            android:src="@drawable/ic_next" />
                     </LinearLayout>
 
                     <!-- 播放模式按钮 -->
@@ -272,7 +272,7 @@
                             android:layout_width="32dp"
                             android:layout_height="32dp"
                             android:background="?attr/selectableItemBackgroundBorderless"
-                            android:src="@android:drawable/ic_input_add"
+                            android:src="@drawable/ic_add"
                             android:contentDescription="添加音乐"
                             android:layout_marginEnd="8dp" />
 
@@ -282,7 +282,7 @@
                             android:layout_width="32dp"
                             android:layout_height="32dp"
                             android:background="?attr/selectableItemBackgroundBorderless"
-                            android:src="@android:drawable/ic_menu_delete"
+                            android:src="@drawable/ic_delete"
                             android:contentDescription="清空列表" />
                     </LinearLayout>
 
@@ -299,7 +299,7 @@
                             android:layout_width="32dp"
                             android:layout_height="32dp"
                             android:background="?attr/selectableItemBackgroundBorderless"
-                            android:src="@android:drawable/ic_menu_more"
+                            android:src="@drawable/ic_menu_more"
                             android:contentDescription="更多选项" />
                     </LinearLayout>
                 </LinearLayout>
