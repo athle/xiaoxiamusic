@@ -91,35 +91,43 @@ class MusicService : Service() {
         // 注册耳机和媒体按钮接收器
         registerMediaButtonReceiver()
         
-        // 立即初始化媒体会话管理器 - 修复Android 15/16系统控制中心
+        // 智能选择媒体会话管理器 - 避免重复创建会话
         try {
-            // 初始化车机媒体会话管理器
-            carMediaSessionManager = CarMediaSessionManager(this)
-            carMediaSessionManager.createMediaSession()
+            // 根据系统类型选择最合适的媒体会话管理器
+            val systemType = getSystemType()
             
-            // 初始化ColorOS 15媒体会话管理器（用于系统控制中心）
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                colorOS15MediaSessionManager = ColorOS15MediaSessionManager(this)
-                colorOS15MediaSessionManager?.createMediaSession()
+            when (systemType) {
+                "coloros15" -> {
+                    // ColorOS 15使用专用媒体会话管理器
+                    colorOS15MediaSessionManager = ColorOS15MediaSessionManager(this)
+                    colorOS15MediaSessionManager?.createMediaSession()
+                    Log.d("MusicService", "使用ColorOS 15专用媒体会话")
+                }
+                "vivo_miui" -> {
+                    // vivo MIUI使用专用媒体会话管理器
+                    vivoMIUIMediaSessionManager = VivoMIUIMediaSessionManager(this)
+                    if (vivoMIUIMediaSessionManager?.isVivoMIUISystem() == true) {
+                        vivoMIUIMediaSessionManager?.createMediaSession()
+                        Log.d("MusicService", "使用vivo MIUI专用媒体会话")
+                    }
+                }
+                "car" -> {
+                    // 车机系统使用车机媒体会话管理器
+                    carMediaSessionManager = CarMediaSessionManager(this)
+                    carMediaSessionManager.createMediaSession()
+                    Log.d("MusicService", "使用车机媒体会话")
+                }
+                else -> {
+                    // 其他系统使用增强型通知管理器的媒体会话
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        enhancedMediaNotificationManager = EnhancedMediaNotificationManager(this)
+                        enhancedMediaNotificationManager.createMediaSession()
+                        Log.d("MusicService", "使用增强型媒体会话")
+                    }
+                }
             }
             
-            // 初始化vivo MIUI媒体会话管理器
-            vivoMIUIMediaSessionManager = VivoMIUIMediaSessionManager(this)
-            if (vivoMIUIMediaSessionManager?.isVivoMIUISystem() == true) {
-                vivoMIUIMediaSessionManager?.createMediaSession()
-            }
-            
-            // 初始化增强型通知管理器并创建媒体会话
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                enhancedMediaNotificationManager = EnhancedMediaNotificationManager(this)
-                enhancedMediaNotificationManager.createMediaSession()
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                // Android 5.0-7.1也使用增强型通知
-                enhancedMediaNotificationManager = EnhancedMediaNotificationManager(this)
-                enhancedMediaNotificationManager.createMediaSession()
-            }
-            
-            Log.d("MusicService", "所有媒体会话已初始化完成")
+            Log.d("MusicService", "媒体会话初始化完成，系统类型: $systemType")
         } catch (e: Exception) {
             Log.e("MusicService", "媒体会话初始化失败: ${e.message}")
         }
@@ -1079,6 +1087,85 @@ class MusicService : Service() {
                 }
                 playMusicInternal(currentSongIndex)
             }
+        }
+    }
+    
+    // 智能检测系统类型，避免媒体会话重复创建
+    private fun getSystemType(): String {
+        return try {
+            // 检测ColorOS 15
+            if (isColorOS15()) {
+                "coloros15"
+            }
+            // 检测vivo MIUI
+            else if (isVivoMIUISystem()) {
+                "vivo_miui"
+            }
+            // 检测车机系统
+            else if (isCarSystem()) {
+                "car"
+            }
+            // 默认使用标准系统
+            else {
+                "standard"
+            }
+        } catch (e: Exception) {
+            Log.e("MusicService", "系统检测失败: ${e.message}")
+            "standard"
+        }
+    }
+    
+    // 检测是否为ColorOS 15
+    private fun isColorOS15(): Boolean {
+        return try {
+            val osVersion = Build.VERSION.INCREMENTAL
+            val manufacturer = Build.MANUFACTURER.lowercase()
+            val brand = Build.BRAND.lowercase()
+            
+            // OPPO/Realme/OnePlus设备且包含ColorOS 15特征
+            (manufacturer.contains("oppo") || manufacturer.contains("realme") || 
+             manufacturer.contains("oneplus") || brand.contains("oppo") || 
+             brand.contains("realme") || brand.contains("oneplus")) && 
+            (osVersion.contains("coloros15") || osVersion.contains("coloros_15") || 
+             osVersion.contains("15.0") || osVersion.contains("15.1"))
+        } catch (e: Exception) {
+            false
+        }
+    }
+    
+    // 检测是否为vivo MIUI系统
+    private fun isVivoMIUISystem(): Boolean {
+        return try {
+            val manufacturer = Build.MANUFACTURER.lowercase()
+            val brand = Build.BRAND.lowercase()
+            
+            // vivo设备
+            manufacturer.contains("vivo") || brand.contains("vivo") ||
+            // MIUI系统检测
+            Build.HOST.contains("miui") || Build.MANUFACTURER.contains("Xiaomi")
+        } catch (e: Exception) {
+            false
+        }
+    }
+    
+    // 检测是否为车机系统
+    private fun isCarSystem(): Boolean {
+        return try {
+            // 车机系统特征检测
+            val features = packageManager.systemAvailableFeatures
+            val hasCarFeature = features.any { 
+                it.name?.contains("android.hardware.type.automotive") == true 
+            }
+            
+            val manufacturer = Build.MANUFACTURER.lowercase()
+            val model = Build.MODEL.lowercase()
+            
+            hasCarFeature || 
+            manufacturer.contains("car") || 
+            model.contains("car") || 
+            model.contains("automotive")
+        } catch (e: Exception) {
+            false
         }
     }
 }
