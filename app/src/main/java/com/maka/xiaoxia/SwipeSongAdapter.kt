@@ -13,11 +13,18 @@ import android.media.MediaMetadataRetriever
 import android.provider.MediaStore
 import android.content.ContentUris
 import android.net.Uri
+import android.os.AsyncTask
 
 class SwipeSongAdapter(
     private val context: Context,
     private val songs: List<Song>
 ) : BaseAdapter() {
+
+    // 缓存专辑封面，避免重复加载
+    private val albumArtCache = mutableMapOf<Long, Bitmap>()
+    private val defaultBitmap by lazy { 
+        BitmapFactory.decodeResource(context.resources, R.drawable.ic_music_default) 
+    }
 
     override fun getCount(): Int = songs.size
     override fun getItem(position: Int): Song = songs[position]
@@ -38,8 +45,9 @@ class SwipeSongAdapter(
         artistText.text = song.artist
         durationText.text = formatTime(song.duration)
         
-        // 加载专辑封面
-        loadAlbumArt(song, albumArtImage)
+        // 设置默认图片，异步加载专辑封面
+        albumArtImage.setImageBitmap(defaultBitmap)
+        loadAlbumArtAsync(song, albumArtImage)
 
         // 设置点击事件
         view.setOnClickListener {
@@ -60,46 +68,62 @@ class SwipeSongAdapter(
 
     private fun loadAlbumArt(song: Song, imageView: ImageView) {
         try {
-            // 直接从文件读取ID3标签封面
-            val retriever = MediaMetadataRetriever()
-            retriever.setDataSource(song.path)
-            
-            val art = retriever.embeddedPicture
-            if (art != null) {
-                val bitmap = BitmapFactory.decodeByteArray(art, 0, art.size)
-                if (bitmap != null) {
-                    imageView.setImageBitmap(bitmap)
-                    retriever.release()
-                    return
-                }
-            }
-            
-            retriever.release()
-            
-            // 如果直接读取失败，尝试系统媒体库
-            try {
-                if (song.albumId > 0) {
-                    val albumArtUri = Uri.parse("content://media/external/audio/albumart")
-                    val albumArtFullUri = ContentUris.withAppendedId(albumArtUri, song.albumId)
-                    
-                    val inputStream = context.contentResolver.openInputStream(albumArtFullUri)
-                    val bitmap = BitmapFactory.decodeStream(inputStream)
-                    if (bitmap != null) {
-                        imageView.setImageBitmap(bitmap)
-                    } else {
-                        imageView.setImageResource(R.drawable.ic_music_default)
-                    }
-                    inputStream?.close()
-                } else {
-                    imageView.setImageResource(R.drawable.ic_music_default)
-                }
-            } catch (e: Exception) {
+            val mmr = MediaMetadataRetriever()
+            mmr.setDataSource(song.path)
+            val artBytes = mmr.embeddedPicture
+            if (artBytes != null) {
+                val bitmap = BitmapFactory.decodeByteArray(artBytes, 0, artBytes.size)
+                imageView.setImageBitmap(bitmap)
+            } else {
                 imageView.setImageResource(R.drawable.ic_music_default)
             }
-            
+            mmr.release()
         } catch (e: Exception) {
-            // 出错时使用默认图标
             imageView.setImageResource(R.drawable.ic_music_default)
         }
+    }
+
+    private fun loadAlbumArtAsync(song: Song, imageView: ImageView) {
+        // 先从缓存获取
+        val cachedBitmap = albumArtCache[song.id]
+        if (cachedBitmap != null) {
+            imageView.setImageBitmap(cachedBitmap)
+            return
+        }
+
+        // 异步加载专辑封面
+        AsyncTask.execute {
+            try {
+                val mmr = MediaMetadataRetriever()
+                mmr.setDataSource(song.path)
+                val artBytes = mmr.embeddedPicture
+                val bitmap = if (artBytes != null) {
+                    BitmapFactory.decodeByteArray(artBytes, 0, artBytes.size)
+                } else {
+                    defaultBitmap
+                }
+                mmr.release()
+
+                // 缓存图片
+                albumArtCache[song.id] = bitmap
+
+                // 在主线程更新UI
+                (context as? android.app.Activity)?.runOnUiThread {
+                    if (imageView.tag == song.id) {
+                        imageView.setImageBitmap(bitmap)
+                    }
+                }
+            } catch (e: Exception) {
+                // 出错时使用默认图片
+                (context as? android.app.Activity)?.runOnUiThread {
+                    if (imageView.tag == song.id) {
+                        imageView.setImageBitmap(defaultBitmap)
+                    }
+                }
+            }
+        }
+        
+        // 设置tag防止图片错位
+        imageView.tag = song.id
     }
 }

@@ -23,7 +23,7 @@ import android.util.Log
  * 支持安卓15及小米、OPPO、vivo定制系统的通知栏音乐控件
  * 兼容安卓4.4至安卓15全版本
  */
-class EnhancedMediaNotificationManager(private val context: Context) {
+class EnhancedMediaNotificationManager(private val context: Context) : NotificationManagerFactory.INotificationManager {
     
     companion object {
         private const val TAG = "EnhancedMediaNotification"
@@ -36,12 +36,11 @@ class EnhancedMediaNotificationManager(private val context: Context) {
         private const val VIVO_PACKAGE = "com.android.bbkmusic"
     }
     
-    private var mediaSession: MediaSessionCompat? = null
     private var notificationManager: NotificationManagerCompat = NotificationManagerCompat.from(context)
     
     init {
         createNotificationChannel()
-        initializeMediaSession()
+        // 媒体会话功能已移至UnifiedMediaSessionManager
     }
     
     /**
@@ -106,68 +105,12 @@ class EnhancedMediaNotificationManager(private val context: Context) {
     }
     
     /**
-     * 初始化媒体会话 - 支持系统级媒体控制（Android 15/16兼容）
+     * 初始化媒体会话 - 使用统一的媒体会话管理器
      */
     private fun initializeMediaSession() {
-        mediaSession = MediaSessionCompat(context, "XiaoxiaMusic").apply {
-            setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or
-                     MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS or
-                     MediaSessionCompat.FLAG_HANDLES_QUEUE_COMMANDS)
-            
-            // 设置播放状态 - 适配Android 15/16
-            val playbackState = PlaybackStateCompat.Builder()
-                .setActions(
-                    PlaybackStateCompat.ACTION_PLAY or
-                    PlaybackStateCompat.ACTION_PAUSE or
-                    PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-                    PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
-                    PlaybackStateCompat.ACTION_STOP or
-                    PlaybackStateCompat.ACTION_SEEK_TO
-                )
-                .setState(PlaybackStateCompat.STATE_PAUSED, 0, 1.0f)
-                .build()
-            
-            setPlaybackState(playbackState)
-            
-            // 确保会话激活 - 修复Android 15/16系统控制中心
-            isActive = true
-            
-            // 设置媒体会话回调，确保系统控制中心响应
-            setCallback(object : MediaSessionCompat.Callback() {
-                override fun onPlay() {
-                    super.onPlay()
-                    // 通知MusicService处理播放
-                    val intent = Intent(context, MusicService::class.java).apply {
-                        action = MusicService.ACTION_PLAY_PAUSE
-                    }
-                    context.startService(intent)
-                }
-
-                override fun onPause() {
-                    super.onPause()
-                    val intent = Intent(context, MusicService::class.java).apply {
-                        action = MusicService.ACTION_PLAY_PAUSE
-                    }
-                    context.startService(intent)
-                }
-
-                override fun onSkipToNext() {
-                    super.onSkipToNext()
-                    val intent = Intent(context, MusicService::class.java).apply {
-                        action = MusicService.ACTION_NEXT
-                    }
-                    context.startService(intent)
-                }
-
-                override fun onSkipToPrevious() {
-                    super.onSkipToPrevious()
-                    val intent = Intent(context, MusicService::class.java).apply {
-                        action = MusicService.ACTION_PREVIOUS
-                    }
-                    context.startService(intent)
-                }
-            })
-        }
+        // 使用UnifiedMediaSessionManager提供的会话令牌
+        // 不再单独创建媒体会话，避免重复
+        Log.d(TAG, "使用UnifiedMediaSessionManager提供的媒体会话")
     }
     
     /**
@@ -210,10 +153,7 @@ class EnhancedMediaNotificationManager(private val context: Context) {
         }
         val prevPendingIntent = PendingIntent.getService(context, 3, prevIntent, pendingIntentFlags)
         
-        val stopIntent = Intent(context, MusicService::class.java).apply {
-            action = MusicService.ACTION_STOP
-        }
-        val stopPendingIntent = PendingIntent.getService(context, 4, stopIntent, pendingIntentFlags)
+        // 停止功能已移除 - 不再创建停止Intent
         
         // 获取专辑封面
         val largeIcon = albumArt ?: getDefaultAlbumArt()
@@ -236,7 +176,7 @@ class EnhancedMediaNotificationManager(private val context: Context) {
             
         // 添加操作按钮
         builder.addAction(
-            R.drawable.ic_prev,
+            android.R.drawable.ic_media_previous,
             "上一首",
             prevPendingIntent
         )
@@ -250,26 +190,18 @@ class EnhancedMediaNotificationManager(private val context: Context) {
         )
         
         builder.addAction(
-            R.drawable.ic_next,
+            android.R.drawable.ic_media_next,
             "下一首",
             nextPendingIntent
         )
         
-        // 添加停止按钮（部分ROM需要）
-        builder.addAction(
-            R.drawable.ic_stop,
-            "停止",
-            stopPendingIntent
-        )
+        // 停止按钮已移除
         
         // 设置媒体样式 - 安卓5.0+
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 val mediaStyle = MediaStyle()
                     .setShowActionsInCompactView(0, 1, 2) // 显示前3个操作
-                    .setMediaSession(mediaSession?.sessionToken)
-                    .setShowCancelButton(true)
-                    .setCancelButtonIntent(stopPendingIntent)
                 builder.setStyle(mediaStyle)
             }
         } catch (e: Exception) {
@@ -500,41 +432,25 @@ class EnhancedMediaNotificationManager(private val context: Context) {
     }
     
     /**
-     * 更新播放状态
+     * 已废弃：更新播放状态功能已移至UnifiedMediaSessionManager
      */
+    @Deprecated("使用UnifiedMediaSessionManager.updatePlaybackState")
     fun updatePlaybackState(isPlaying: Boolean, position: Long, duration: Long) {
-        mediaSession?.let { session ->
-            val state = if (isPlaying) {
-                PlaybackStateCompat.STATE_PLAYING
-            } else {
-                PlaybackStateCompat.STATE_PAUSED
-            }
-            
-            val playbackState = PlaybackStateCompat.Builder()
-                .setActions(PlaybackStateCompat.ACTION_PLAY_PAUSE or
-                           PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-                           PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
-                           PlaybackStateCompat.ACTION_STOP)
-                .setState(state, position, 1.0f)
-                .build()
-            
-            session.setPlaybackState(playbackState)
-        }
+        // 空实现，功能已移至UnifiedMediaSessionManager
     }
     
     /**
-     * 创建媒体会话（公开方法，供MusicService调用）
+     * 已废弃：创建媒体会话功能已移至UnifiedMediaSessionManager
      */
+    @Deprecated("使用UnifiedMediaSessionManager.createMediaSession")
     fun createMediaSession() {
-        if (mediaSession == null) {
-            // 调用私有的媒体会话创建方法
-            initializeMediaSession()
-        }
+        // 空实现，功能已移至UnifiedMediaSessionManager
     }
 
     /**
-     * 更新媒体元数据
+     * 已废弃：更新媒体元数据功能已移至UnifiedMediaSessionManager
      */
+    @Deprecated("使用UnifiedMediaSessionManager.updateMediaMetadata")
     fun updateMediaMetadata(
         title: String,
         artist: String,
@@ -542,30 +458,20 @@ class EnhancedMediaNotificationManager(private val context: Context) {
         duration: Long,
         albumArt: Bitmap? = null
     ) {
-        mediaSession?.let { session ->
-            val metadata = android.support.v4.media.MediaMetadataCompat.Builder()
-                .putString(android.support.v4.media.MediaMetadataCompat.METADATA_KEY_TITLE, title)
-                .putString(android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ARTIST, artist)
-                .putString(android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ALBUM, album)
-                .putLong(android.support.v4.media.MediaMetadataCompat.METADATA_KEY_DURATION, duration)
-                .putBitmap(android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ALBUM_ART, albumArt)
-                .build()
-            
-            session.setMetadata(metadata)
-        }
+        // 空实现，功能已移至UnifiedMediaSessionManager
     }
     
     /**
      * 显示通知
      */
-    fun showNotification(
+    override fun showNotification(
         title: String,
         artist: String,
         album: String,
         isPlaying: Boolean,
-        albumArt: Bitmap? = null,
-        duration: Long = 0,
-        position: Long = 0
+        albumArt: Bitmap?,
+        duration: Long,
+        position: Long
     ) {
         val notification = createMediaNotification(
             title, artist, album, isPlaying, albumArt, duration, position
@@ -581,7 +487,7 @@ class EnhancedMediaNotificationManager(private val context: Context) {
     /**
      * 取消通知
      */
-    fun cancelNotification() {
+    override fun cancelNotification() {
         try {
             notificationManager.cancel(NOTIFICATION_ID)
         } catch (e: Exception) {
@@ -594,7 +500,6 @@ class EnhancedMediaNotificationManager(private val context: Context) {
      */
     fun release() {
         cancelNotification()
-        mediaSession?.release()
-        mediaSession = null
+        // 媒体会话释放功能已移至UnifiedMediaSessionManager
     }
 }

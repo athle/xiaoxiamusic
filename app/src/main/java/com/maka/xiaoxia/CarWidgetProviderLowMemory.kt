@@ -104,25 +104,30 @@ class CarWidgetProviderLowMemory : AppWidgetProvider() {
         super.onReceive(context, intent)
         
         when (intent.action) {
-            ACTION_UPDATE_CAR_WIDGET_LOW_MEMORY, ACTION_UPDATE_WIDGET, 
             "com.maka.xiaoxia.UPDATE_ALL_COMPONENTS" -> {
-                val actionType = when (intent.action) {
-                    "com.maka.xiaoxia.UPDATE_ALL_COMPONENTS" -> "统一广播"
-                    ACTION_UPDATE_WIDGET -> "标准广播"
-                    else -> "车机低内存广播"
-                }
-                android.util.Log.d(TAG, "收到$actionType，准备更新车机低内存小组件")
-                
+                // 统一广播处理 - 优化后的单一更新
+                android.util.Log.d("CarWidgetLowMemory", "收到统一广播，准备更新车机低内存小组件")
                 updateWidgetWithDirectData(context, intent)
             }
-            AppWidgetManager.ACTION_APPWIDGET_UPDATE -> {
-                // 系统广播触发更新
-                val appWidgetManager = AppWidgetManager.getInstance(context)
-                val thisWidget = ComponentName(context, CarWidgetProviderLowMemory::class.java)
-                val appWidgetIds = appWidgetManager.getAppWidgetIds(thisWidget)
+            ACTION_UPDATE_CAR_WIDGET_LOW_MEMORY, ACTION_UPDATE_WIDGET, AppWidgetManager.ACTION_APPWIDGET_UPDATE -> {
+                // 兼容旧版本广播，但减少更新频率
+                val currentTime = System.currentTimeMillis()
+                val sharedPref = context.getSharedPreferences("music_service_prefs", Context.MODE_PRIVATE)
+                val lastUpdateTime = sharedPref.getLong("last_widget_update_time", 0)
                 
-                for (appWidgetId in appWidgetIds) {
-                    updateAppWidget(context, appWidgetManager, appWidgetId)
+                // 500ms内避免重复更新
+                if (currentTime - lastUpdateTime > 500) {
+                    android.util.Log.d("CarWidgetLowMemory", "收到系统广播，强制更新车机低内存小组件")
+                    val appWidgetManager = AppWidgetManager.getInstance(context)
+                    val thisWidget = ComponentName(context, CarWidgetProviderLowMemory::class.java)
+                    val appWidgetIds = appWidgetManager.getAppWidgetIds(thisWidget)
+                    
+                    for (appWidgetId in appWidgetIds) {
+                        updateAppWidget(context, appWidgetManager, appWidgetId)
+                    }
+                    sharedPref.edit().putLong("last_widget_update_time", currentTime).apply()
+                } else {
+                    android.util.Log.d("CarWidgetLowMemory", "跳过重复系统广播更新")
                 }
             }
         }
@@ -167,13 +172,31 @@ class CarWidgetProviderLowMemory : AppWidgetProvider() {
         val isPlaying = intent.getBooleanExtra("is_playing", false)
         val coverPath = intent.getStringExtra("cover_path") ?: ""
         val coverAlbumId = intent.getLongExtra("cover_album_id", 0L)
+        val currentSongIndex = intent.getIntExtra("current_song_index", 0)
+        val songCount = intent.getIntExtra("song_count", 0)
         
-
+        // 记录更新时间戳并同步更新SharedPreferences
+        val sharedPref = context.getSharedPreferences("music_service_prefs", Context.MODE_PRIVATE)
+        sharedPref.edit().apply {
+            putLong("last_widget_update_time", System.currentTimeMillis())
+            // 同时更新SharedPreferences，确保后续获取的数据一致
+            putString("current_title", title)
+            putString("current_artist", artist)
+            putBoolean("is_playing", isPlaying)
+            putString("current_song_path", coverPath)
+            putLong("current_album_id", coverAlbumId)
+            putInt("current_song_index", currentSongIndex)
+            apply()
+        }
+        
+        android.util.Log.d("CarWidgetLowMemory", "车机低内存小组件更新: $title - $artist, 索引: $currentSongIndex/$songCount")
         
         // 获取所有小组件实例并更新
         val appWidgetManager = AppWidgetManager.getInstance(context)
         val thisWidget = ComponentName(context, CarWidgetProviderLowMemory::class.java)
         val appWidgetIds = appWidgetManager.getAppWidgetIds(thisWidget)
+        
+        android.util.Log.d("CarWidgetLowMemory", "需要更新的车机低内存小组件数量: ${appWidgetIds.size}")
         
         for (appWidgetId in appWidgetIds) {
             val views = RemoteViews(context.packageName, R.layout.widget_music_low_memory)
@@ -204,23 +227,30 @@ class CarWidgetProviderLowMemory : AppWidgetProvider() {
             // 设置专辑封面
             if (coverPath.isNotEmpty()) {
                 try {
+                    android.util.Log.d("CarWidgetLowMemory", "尝试加载封面: $coverPath")
                     // 优先从文件直接读取嵌入式封面
                     val bitmap = getAlbumArt(context, coverPath)
                     if (bitmap != null) {
+                        android.util.Log.d("CarWidgetLowMemory", "成功加载封面")
                         views.setImageViewBitmap(R.id.widget_album_art, bitmap)
                     } else {
+                        android.util.Log.d("CarWidgetLowMemory", "文件无嵌入式封面，尝试专辑ID: $coverAlbumId")
                         // 如果文件没有嵌入式封面，再尝试通过专辑ID获取
                         val albumBitmap = getAlbumArtById(context, coverAlbumId)
                         if (albumBitmap != null) {
+                            android.util.Log.d("CarWidgetLowMemory", "成功从专辑ID获取封面")
                             views.setImageViewBitmap(R.id.widget_album_art, albumBitmap)
                         } else {
+                            android.util.Log.d("CarWidgetLowMemory", "使用默认封面")
                             views.setImageViewResource(R.id.widget_album_art, R.drawable.ic_music_default)
                         }
                     }
                 } catch (e: Exception) {
+                    android.util.Log.w("CarWidgetLowMemory", "获取封面异常: ${e.message}")
                     views.setImageViewResource(R.id.widget_album_art, R.drawable.ic_music_default)
                 }
             } else {
+                android.util.Log.d("CarWidgetLowMemory", "无封面路径，使用默认")
                 views.setImageViewResource(R.id.widget_album_art, R.drawable.ic_music_default)
             }
             

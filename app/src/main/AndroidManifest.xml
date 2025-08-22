@@ -80,17 +80,16 @@
         
         <!-- 音乐播放小组件 - 标准版 -->
         <receiver android:name=".MusicWidgetProvider"
-            android:exported="true"
-            android:enabled="true">
+            android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="com.maka.xiaoxia.action.UPDATE_WIDGET" />
                 <action android:name="com.maka.xiaoxia.action.PLAY_PAUSE" />
                 <action android:name="com.maka.xiaoxia.action.NEXT" />
                 <action android:name="com.maka.xiaoxia.action.PREVIOUS" />
+                <action android:name="com.maka.xiaoxia.UPDATE_ALL_COMPONENTS" />
             </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
+            <meta-data android:name="android.appwidget.provider"
                 android:resource="@xml/music_widget_info" />
         </receiver>
         
@@ -144,6 +143,7 @@
                 <action android:name="com.maka.xiaoxia.action.PLAY_PAUSE" />
                 <action android:name="com.maka.xiaoxia.action.NEXT" />
                 <action android:name="com.maka.xiaoxia.action.PREVIOUS" />
+                <action android:name="com.maka.xiaoxia.UPDATE_ALL_COMPONENTS" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
@@ -158,21 +158,14 @@
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="com.maka.xiaoxia.action.UPDATE_CAR_WIDGET_LOW_MEMORY" />
+                <action android:name="com.maka.xiaoxia.UPDATE_ALL_COMPONENTS" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/car_widget_info_low_memory" />
         </receiver>
         
-        <!-- 车机按键测试Activity -->
-        <activity android:name=".CarKeyTestActivity"
-            android:exported="true"
-            android:label="车机按键测试">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>
+
     </application>
 
 </manifest>

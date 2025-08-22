@@ -16,7 +16,7 @@ import android.util.Log
  * 安卓4.4及以下版本的兼容媒体通知管理器
  * 使用传统通知API，避免使用NotificationChannel和MediaStyle
  */
-class LegacyMediaNotificationManager(private val context: Context) {
+class LegacyMediaNotificationManager(private val context: Context) : NotificationManagerFactory.INotificationManager {
     
     companion object {
         private const val TAG = "LegacyMediaNotification"
@@ -88,7 +88,7 @@ class LegacyMediaNotificationManager(private val context: Context) {
             
         // 添加操作按钮
         builder.addAction(
-            R.drawable.ic_prev,
+            android.R.drawable.ic_media_previous,
             "上一首",
             prevPendingIntent
         )
@@ -102,7 +102,7 @@ class LegacyMediaNotificationManager(private val context: Context) {
         )
         
         builder.addAction(
-            R.drawable.ic_next,
+            android.R.drawable.ic_media_next,
             "下一首",
             nextPendingIntent
         )
@@ -227,12 +227,14 @@ class LegacyMediaNotificationManager(private val context: Context) {
     /**
      * 显示传统通知
      */
-    fun showLegacyNotification(
+    override fun showNotification(
         title: String,
         artist: String,
         album: String,
         isPlaying: Boolean,
-        albumArt: Bitmap? = null
+        albumArt: Bitmap?,
+        duration: Long,
+        position: Long
     ) {
         try {
             val notification = createLegacyMediaNotification(title, artist, album, isPlaying, albumArt)
@@ -245,7 +247,7 @@ class LegacyMediaNotificationManager(private val context: Context) {
     /**
      * 取消通知
      */
-    fun cancelNotification() {
+    override fun cancelNotification() {
         try {
             notificationManager.cancel(NOTIFICATION_ID)
         } catch (e: Exception) {

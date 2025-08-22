@@ -112,19 +112,24 @@ class MusicWidgetProvider : AppWidgetProvider() {
                     }
                 }
             }
-            ACTION_UPDATE_WIDGET, "com.maka.xiaoxia.UPDATE_ALL_COMPONENTS" -> {
-                // 支持统一广播和旧版本广播
-                val actionType = if (intent.action == "com.maka.xiaoxia.UPDATE_ALL_COMPONENTS") "统一广播" else "旧版本广播"
-                android.util.Log.d("MusicWidget", "收到$actionType，准备更新小组件")
-                
-                // 无论是否有直接数据，都强制使用广播中的最新数据
+            "com.maka.xiaoxia.UPDATE_ALL_COMPONENTS" -> {
+                // 统一广播处理 - 优化后的单一更新
+                android.util.Log.d("MusicWidget", "收到统一广播，准备更新小组件")
                 updateWidgetWithDirectData(context, intent)
             }
-            AppWidgetManager.ACTION_APPWIDGET_UPDATE -> {
-                android.util.Log.d("MusicWidget", "收到系统APPWIDGET_UPDATE广播")
+            ACTION_UPDATE_WIDGET, AppWidgetManager.ACTION_APPWIDGET_UPDATE -> {
+                // 兼容旧版本广播，但减少更新频率
+                val currentTime = System.currentTimeMillis()
+                val sharedPref = context.getSharedPreferences("music_service_prefs", Context.MODE_PRIVATE)
+                val lastUpdateTime = sharedPref.getLong("last_widget_update_time", 0)
                 
-                // 系统广播触发时，强制从SharedPreferences获取最新数据
-                forceUpdateWidget(context)
+                // 500ms内避免重复更新
+                if (currentTime - lastUpdateTime > 500) {
+                    android.util.Log.d("MusicWidget", "收到系统广播，强制更新小组件")
+                    forceUpdateWidget(context)
+                } else {
+                    android.util.Log.d("MusicWidget", "跳过重复系统广播更新")
+                }
             }
         }
     }
@@ -155,17 +160,31 @@ class MusicWidgetProvider : AppWidgetProvider() {
         val isPlaying = intent.getBooleanExtra("is_playing", false)
         val coverPath = intent.getStringExtra("cover_path") ?: ""
         val coverAlbumId = intent.getLongExtra("cover_album_id", 0L)
+        val currentSongIndex = intent.getIntExtra("current_song_index", 0)
+        val songCount = intent.getIntExtra("song_count", 0)
         
         // 记录更新时间戳，防止系统onUpdate覆盖
         val sharedPref = context.getSharedPreferences("music_service_prefs", Context.MODE_PRIVATE)
-        sharedPref.edit().putLong("last_widget_update_time", System.currentTimeMillis()).apply()
+        sharedPref.edit().apply {
+            putLong("last_widget_update_time", System.currentTimeMillis())
+            // 同时更新SharedPreferences，确保后续获取的数据一致
+            putString("current_title", title)
+            putString("current_artist", artist)
+            putBoolean("is_playing", isPlaying)
+            putString("current_song_path", coverPath)
+            putLong("current_album_id", coverAlbumId)
+            putInt("current_song_index", currentSongIndex)
+            apply() // 使用apply异步提交，避免阻塞
+        }
         
-        android.util.Log.d("MusicWidget", "使用直接数据更新小组件: $title - $artist")
+        android.util.Log.d("MusicWidget", "使用直接数据更新小组件: $title - $artist, 索引: $currentSongIndex/$songCount")
         
         // 获取所有小组件实例并更新
         val appWidgetManager = AppWidgetManager.getInstance(context)
         val thisWidget = ComponentName(context, MusicWidgetProvider::class.java)
         val appWidgetIds = appWidgetManager.getAppWidgetIds(thisWidget)
+        
+        android.util.Log.d("MusicWidget", "需要更新的小组件数量: ${appWidgetIds.size}")
         
         for (appWidgetId in appWidgetIds) {
             val views = RemoteViews(context.packageName, R.layout.widget_music)
@@ -216,30 +235,36 @@ class MusicWidgetProvider : AppWidgetProvider() {
             // 直接设置专辑封面，使用广播传递的数据
             if (coverPath.isNotEmpty()) {
                 try {
+                    android.util.Log.d("MusicWidget", "尝试加载封面: $coverPath")
                     // 优先从文件直接读取嵌入式封面
                     val bitmap = getAlbumArt(context, coverPath)
                     if (bitmap != null) {
+                        android.util.Log.d("MusicWidget", "成功加载封面")
                         views.setImageViewBitmap(R.id.widget_album_art, bitmap)
                     } else {
+                        android.util.Log.d("MusicWidget", "文件无嵌入式封面，尝试专辑ID: $coverAlbumId")
                         // 如果文件没有嵌入式封面，再尝试通过专辑ID获取
                         val albumBitmap = getAlbumArtById(context, coverAlbumId)
                         if (albumBitmap != null) {
+                            android.util.Log.d("MusicWidget", "成功从专辑ID获取封面")
                             views.setImageViewBitmap(R.id.widget_album_art, albumBitmap)
                         } else {
+                            android.util.Log.d("MusicWidget", "使用默认封面")
                             views.setImageViewResource(R.id.widget_album_art, R.drawable.ic_music_default)
                         }
                     }
                 } catch (e: Exception) {
+                    android.util.Log.w("MusicWidget", "获取封面异常: ${e.message}")
                     views.setImageViewResource(R.id.widget_album_art, R.drawable.ic_music_default)
                 }
             } else {
+                android.util.Log.d("MusicWidget", "无封面路径，使用默认")
                 views.setImageViewResource(R.id.widget_album_art, R.drawable.ic_music_default)
             }
             
             appWidgetManager.updateAppWidget(appWidgetId, views)
         }
         
-
     }
 
     private fun updateAppWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
@@ -280,6 +305,10 @@ class MusicWidgetProvider : AppWidgetProvider() {
         views.setOnClickPendingIntent(R.id.widget_next, nextPendingIntent)
         views.setOnClickPendingIntent(R.id.widget_previous, prevPendingIntent)
         
+        // 强制刷新SharedPreferences缓存 - 使用同步方式确保获取最新数据
+        val sharedPref = context.getSharedPreferences("music_service_prefs", Context.MODE_PRIVATE)
+        sharedPref.edit().apply()
+        
         // 更新小组件内容
         updateWidgetContent(context, views)
         
@@ -289,7 +318,7 @@ class MusicWidgetProvider : AppWidgetProvider() {
     private fun updateWidgetContent(context: Context, views: RemoteViews) {
         val sharedPref = context.getSharedPreferences("music_service_prefs", Context.MODE_PRIVATE)
         
-        // 强制刷新SharedPreferences
+        // 强制刷新SharedPreferences - 确保获取最新数据
         sharedPref.edit().apply()
         
         val title = sharedPref.getString("current_title", "未知歌曲")
@@ -297,6 +326,7 @@ class MusicWidgetProvider : AppWidgetProvider() {
         val isPlaying = sharedPref.getBoolean("is_playing", false)
         val albumArtPath = sharedPref.getString("current_song_path", "")
         val albumId = sharedPref.getLong("current_album_id", 0L)
+        val currentSongIndex = sharedPref.getInt("current_song_index", 0)
         
         views.setTextViewText(R.id.widget_song_title, title)
         views.setTextViewText(R.id.widget_artist, artist)
@@ -310,6 +340,7 @@ class MusicWidgetProvider : AppWidgetProvider() {
         android.util.Log.d("MusicWidget", "文件路径: $albumArtPath")
         android.util.Log.d("MusicWidget", "专辑ID: $albumId")
         android.util.Log.d("MusicWidget", "播放状态: $isPlaying")
+        android.util.Log.d("MusicWidget", "当前索引: $currentSongIndex")
         
         // 设置专辑封面
         if (!albumArtPath.isNullOrEmpty()) {

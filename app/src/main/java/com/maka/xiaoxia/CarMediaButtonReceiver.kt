@@ -7,8 +7,9 @@ import android.util.Log
 import android.view.KeyEvent
 
 /**
- * 车机实体按键接收器 - 领克02 CS11专用
- * 处理车机方向盘或中控台的实体按键事件 - 安卓4.4兼容版
+ * 统一媒体按键接收器
+ * 处理所有媒体按键事件，包括车机、耳机、蓝牙等
+ * 功能整合：替代MediaButtonService，统一处理所有媒体按键
  */
 class CarMediaButtonReceiver : BroadcastReceiver() {
     

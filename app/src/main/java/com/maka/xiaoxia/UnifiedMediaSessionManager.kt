@@ -4,46 +4,47 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.media.AudioManager
+import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
 
 /**
- * Vivo MIUI系统控制中心媒体播放集成管理器
- * 专门用于适配vivo MIUI系统的媒体控制中心
+ * 统一媒体会话管理器 - 适配所有Android系统版本
+ * 基于标准MediaSessionCompat实现，无需为定制系统做特殊适配
  */
-class VivoMIUIMediaSessionManager(private val context: Context) {
-    
-    companion object {
-        private const val TAG = "VivoMIUIMediaSession"
-    }
+class UnifiedMediaSessionManager(private val context: Context) {
     
     private var mediaSession: MediaSessionCompat? = null
     private var audioManager: AudioManager? = null
     
+    companion object {
+        private const val TAG = "UnifiedMediaSession"
+    }
+    
     /**
-     * 创建并配置MediaSession - 适配vivo MIUI
+     * 创建统一的MediaSession
      */
     fun createMediaSession() {
         try {
             audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             
-            mediaSession = MediaSessionCompat(context, "VivoMIUIMediaSession").apply {
-                // 设置支持的标志 - vivo MIUI需要更多标志
+            mediaSession = MediaSessionCompat(context, "UnifiedMediaSession").apply {
+                // 设置标准标志 - 兼容所有系统
                 setFlags(
                     MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or
-                    MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS or
-                    MediaSessionCompat.FLAG_HANDLES_QUEUE_COMMANDS
+                    MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS
                 )
                 
                 // 设置回调
-                setCallback(VivoMIUIMediaSessionCallback())
+                setCallback(UnifiedMediaSessionCallback())
                 
-                // 设置初始播放状态 - vivo MIUI需要明确的暂停状态
+                // 设置标准播放状态 - 支持所有必要操作
                 val playbackState = PlaybackStateCompat.Builder()
                     .setActions(
                         PlaybackStateCompat.ACTION_PLAY or
                         PlaybackStateCompat.ACTION_PAUSE or
+                        PlaybackStateCompat.ACTION_PLAY_PAUSE or
                         PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
                         PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
                         PlaybackStateCompat.ACTION_STOP or
@@ -54,13 +55,13 @@ class VivoMIUIMediaSessionManager(private val context: Context) {
                 
                 setPlaybackState(playbackState)
                 
-                // 强制激活会话
+                // 激活会话
                 isActive = true
-                
             }
             
+            Log.d(TAG, "统一媒体会话创建成功")
         } catch (e: Exception) {
-            Log.e(TAG, "创建Vivo MIUI MediaSession失败: ${e.message}")
+            Log.e(TAG, "创建统一媒体会话失败: ${e.message}")
         }
     }
     
@@ -74,8 +75,9 @@ class VivoMIUIMediaSessionManager(private val context: Context) {
                 session.release()
             }
             mediaSession = null
+            Log.d(TAG, "统一媒体会话已释放")
         } catch (e: Exception) {
-            Log.e(TAG, "释放Vivo MIUI MediaSession失败: ${e.message}")
+            Log.e(TAG, "释放统一媒体会话失败: ${e.message}")
         }
     }
     
@@ -93,6 +95,7 @@ class VivoMIUIMediaSessionManager(private val context: Context) {
                     .setActions(
                         PlaybackStateCompat.ACTION_PLAY or
                         PlaybackStateCompat.ACTION_PAUSE or
+                        PlaybackStateCompat.ACTION_PLAY_PAUSE or
                         PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
                         PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
                         PlaybackStateCompat.ACTION_STOP or
@@ -106,15 +109,9 @@ class VivoMIUIMediaSessionManager(private val context: Context) {
                     .build()
                 
                 session.setPlaybackState(playbackState)
-                
-                // 确保会话始终激活
-                if (!session.isActive) {
-                    session.isActive = true
-                }
-                
-                
             } catch (e: Exception) {
-                }
+                Log.e(TAG, "更新播放状态失败: ${e.message}")
+            }
         }
     }
     
@@ -130,29 +127,23 @@ class VivoMIUIMediaSessionManager(private val context: Context) {
     ) {
         mediaSession?.let { session ->
             try {
-                val metadataBuilder = android.support.v4.media.MediaMetadataCompat.Builder()
-                    .putString(android.support.v4.media.MediaMetadataCompat.METADATA_KEY_TITLE, title)
-                    .putString(android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ARTIST, artist)
-                    .putString(android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ALBUM, album)
-                    .putLong(android.support.v4.media.MediaMetadataCompat.METADATA_KEY_DURATION, duration)
-                    .putLong(android.support.v4.media.MediaMetadataCompat.METADATA_KEY_TRACK_NUMBER, 1)
-                    .putLong(android.support.v4.media.MediaMetadataCompat.METADATA_KEY_NUM_TRACKS, 1)
+                val metadataBuilder = MediaMetadataCompat.Builder()
+                    .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
+                    .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artist)
+                    .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, album)
+                    .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
+                    .putLong(MediaMetadataCompat.METADATA_KEY_TRACK_NUMBER, 1)
+                    .putLong(MediaMetadataCompat.METADATA_KEY_NUM_TRACKS, 1)
                 
                 albumArt?.let { bitmap ->
-                    metadataBuilder.putBitmap(android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
-                    metadataBuilder.putBitmap(android.support.v4.media.MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, bitmap)
+                    metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
+                    metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, bitmap)
                 }
                 
                 session.setMetadata(metadataBuilder.build())
-                
-                // 确保会话始终激活
-                if (!session.isActive) {
-                    session.isActive = true
-                }
-                
-                
             } catch (e: Exception) {
-                }
+                Log.e(TAG, "更新媒体元数据失败: ${e.message}")
+            }
         }
     }
     
@@ -164,69 +155,33 @@ class VivoMIUIMediaSessionManager(private val context: Context) {
     }
     
     /**
-     * 检查是否为vivo MIUI系统
+     * 统一媒体会话回调
      */
-    fun isVivoMIUISystem(): Boolean {
-        return try {
-            val manufacturer = android.os.Build.MANUFACTURER.lowercase()
-            val brand = android.os.Build.BRAND.lowercase()
-            val fingerprint = android.os.Build.FINGERPRINT.lowercase()
-            
-            // 检查是否是vivo设备
-            val isVivo = manufacturer.contains("vivo") || brand.contains("vivo")
-            
-            // 检查MIUI特征
-            val isMIUI = fingerprint.contains("miui")
-            
-            isVivo || isMIUI
-        } catch (e: Exception) {
-            false
-        }
-    }
-    
-    /**
-     * Vivo MIUI媒体会话回调
-     */
-    private inner class VivoMIUIMediaSessionCallback : MediaSessionCompat.Callback() {
+    private inner class UnifiedMediaSessionCallback : MediaSessionCompat.Callback() {
         
         override fun onPlay() {
             super.onPlay()
-            val intent = Intent(context, MusicService::class.java).apply {
-                action = MusicService.ACTION_PLAY_PAUSE
-            }
-            context.startService(intent)
+            sendActionToService(MusicService.ACTION_PLAY_PAUSE)
         }
         
         override fun onPause() {
             super.onPause()
-            val intent = Intent(context, MusicService::class.java).apply {
-                action = MusicService.ACTION_PLAY_PAUSE
-            }
-            context.startService(intent)
+            sendActionToService(MusicService.ACTION_PLAY_PAUSE)
         }
         
         override fun onSkipToNext() {
             super.onSkipToNext()
-            val intent = Intent(context, MusicService::class.java).apply {
-                action = MusicService.ACTION_NEXT
-            }
-            context.startService(intent)
+            sendActionToService(MusicService.ACTION_NEXT)
         }
         
         override fun onSkipToPrevious() {
             super.onSkipToPrevious()
-            val intent = Intent(context, MusicService::class.java).apply {
-                action = MusicService.ACTION_PREVIOUS
-            }
-            context.startService(intent)
+            sendActionToService(MusicService.ACTION_PREVIOUS)
         }
         
         override fun onStop() {
             super.onStop()
-            val intent = Intent(context, MusicService::class.java).apply {
-                action = MusicService.ACTION_STOP
-            }
-            context.startService(intent)
+            sendActionToService(MusicService.ACTION_STOP)
         }
         
         override fun onSeekTo(pos: Long) {
@@ -234,6 +189,13 @@ class VivoMIUIMediaSessionManager(private val context: Context) {
             val intent = Intent(context, MusicService::class.java).apply {
                 action = MusicService.ACTION_SEEK_TO
                 putExtra("position", pos)
+            }
+            context.startService(intent)
+        }
+        
+        private fun sendActionToService(action: String) {
+            val intent = Intent(context, MusicService::class.java).apply {
+                this.action = action
             }
             context.startService(intent)
         }

@@ -751,6 +751,8 @@ class MainActivity : AppCompatActivity() {
                     songList.add(song)
                     updateSongList()
                     saveCurrentState()
+                    // 添加歌曲时不解析歌词，提高性能
+                    Log.d(TAG, "添加歌曲完成，跳过歌词解析以提高性能")
                     Toast.makeText(this, "已添加: $title", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -760,8 +762,15 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun updateSongList() {
-        val adapter = SwipeSongAdapter(this, songList)
-        songListView?.adapter = adapter
+        val existingAdapter = songListView?.adapter as? SwipeSongAdapter
+        if (existingAdapter != null) {
+            // 重用现有适配器，只更新数据
+            existingAdapter.notifyDataSetChanged()
+        } else {
+            // 只在第一次创建适配器
+            val adapter = SwipeSongAdapter(this, songList)
+            songListView?.adapter = adapter
+        }
         updateViewsVisibility()
         updatePlaylistTitle()
     }
@@ -798,9 +807,12 @@ class MainActivity : AppCompatActivity() {
             // 保存更新后的播放列表
             saveCurrentState()
             
-            // 更新适配器
-            updateSongList()
+            // 只刷新数据，不重新创建适配器
+            val adapter = songListView?.adapter as? SwipeSongAdapter
+            adapter?.notifyDataSetChanged()
+            
             updateViewsVisibility()
+            updatePlaylistTitle()
             
             Toast.makeText(this, "已删除: ${songToDelete.title}", Toast.LENGTH_SHORT).show()
             
@@ -872,7 +884,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
-    private fun updateLyrics() {
+    private fun updateLyrics(parseLyrics: Boolean = true) {
         if (currentSongIndex >= 0 && currentSongIndex < songList.size) {
             val song = songList[currentSongIndex]
             
@@ -886,7 +898,7 @@ class MainActivity : AppCompatActivity() {
             
             totalTimeText?.text = formatTime(song.duration)
             loadAlbumArt(song.albumId)
-            loadLyrics(song)
+            loadLyrics(song, parseLyrics)
         }
     }
     
@@ -1211,9 +1223,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun addSingleFileToPlaylist(file: File) {
         try {
-            // 先测试ID3标签解析
-            testId3Tags(file)
-            
             val song = parseMusicFile(file)
             if (song != null) {
                 songList.add(song)
@@ -1356,6 +1365,14 @@ class MainActivity : AppCompatActivity() {
             val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
             val duration = durationStr?.toLongOrNull() ?: 0
             
+            // 根据设置决定是否进行详细测试
+            if (DebugSettings.isId3DebugEnabled(this)) {
+                testId3Tags(file)
+            } else {
+                // 轻量检测：记录关键信息
+                Log.d(TAG, "解析文件: ${file.name}, 时长: ${duration}ms")
+            }
+            
             // 使用文件路径的哈希值作为albumId，确保一致性
             val albumId = file.absolutePath.hashCode().toLong()
             
@@ -1371,7 +1388,7 @@ class MainActivity : AppCompatActivity() {
                 albumId = albumId
             )
         } catch (e: Exception) {
-            Log.e(TAG, "解析音乐文件元数据失败: ${e.message}")
+            Log.e(TAG, "解析音乐文件元数据失败: ${file.name} - ${e.message}")
             // 如果解析失败，返回基础信息
             return Song(
                 id = System.currentTimeMillis(),
@@ -1405,6 +1422,8 @@ class MainActivity : AppCompatActivity() {
         if (addedCount > 0) {
             updateSongList()
             saveCurrentState()
+            // 添加歌曲时不解析歌词，提高性能
+            Log.d(TAG, "添加歌曲完成，跳过歌词解析以提高性能")
         }
         
         return addedCount
@@ -1443,15 +1462,34 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateUI() {
-        updateCurrentSongInfo()
+    private fun updateUI(updateWidgetToo: Boolean = true) {
+        updateCurrentSongInfo(true)
+        updatePlayPauseButton()
+        if (updateWidgetToo) {
+            updateWidget()
+        }
+        updateServicePrefs()
+        startSeekBarUpdate()
+    }
+
+    private fun updateUIForNewSong() {
+        // 仅在载入新歌曲时调用，更新完整信息
+        updateCurrentSongInfo(true)
         updatePlayPauseButton()
         updateWidget()
         updateServicePrefs()
         startSeekBarUpdate()
     }
 
-    private fun updateCurrentSongInfo() {
+    private fun updateUIForStateChange() {
+        // 仅播放状态变化时调用
+        updatePlayPauseButton()
+        // 恢复UI时不更新小组件，避免性能消耗
+        // updateWidget() // 已注释掉
+        updateServicePrefs()
+    }
+
+    private fun updateCurrentSongInfo(parseLyrics: Boolean = true) {
         if (currentSongIndex >= 0 && currentSongIndex < songList.size) {
             val song = songList[currentSongIndex]
             
@@ -1470,14 +1508,32 @@ class MainActivity : AppCompatActivity() {
             
             totalTimeText?.text = formatTime(song.duration)
             loadAlbumArtFromSong(song)
-            loadLyrics(song)
+            loadLyrics(song, parseLyrics)
+        }
+    }
+
+    private fun updateCurrentSongInfoOnlyIfChanged(newSong: Song) {
+        if (currentSongIndex >= 0 && currentSongIndex < songList.size) {
+            val currentSong = songList[currentSongIndex]
+            
+            // 只在歌曲信息有变化时更新完整信息
+            if (currentSong.title != newSong.title || 
+                currentSong.artist != newSong.artist ||
+                currentSong.album != newSong.album ||
+                currentSong.duration != newSong.duration) {
+                
+                // 更新歌曲信息
+                songList[currentSongIndex] = newSong
+                updateCurrentSongInfo(true)
+                Log.d(TAG, "歌曲信息已更新: ${newSong.title}")
+            }
         }
     }
 
     private fun togglePlayPause() {
         if (isServiceBound) {
             musicService?.togglePlayPause()
-            updateUI()
+            updateUIForStateChange()
         } else {
             Toast.makeText(this, "音乐服务未连接", Toast.LENGTH_SHORT).show()
         }
@@ -1487,7 +1543,7 @@ class MainActivity : AppCompatActivity() {
         if (isServiceBound) {
             musicService?.playNext()
             currentSongIndex = musicService?.getCurrentSongIndex() ?: currentSongIndex
-            updateUI()
+            updateUIForNewSong()
         } else {
             Toast.makeText(this, "音乐服务未连接", Toast.LENGTH_SHORT).show()
         }
@@ -1497,7 +1553,7 @@ class MainActivity : AppCompatActivity() {
         if (isServiceBound) {
             musicService?.playPrevious()
             currentSongIndex = musicService?.getCurrentSongIndex() ?: currentSongIndex
-            updateUI()
+            updateUIForNewSong()
         } else {
             Toast.makeText(this, "音乐服务未连接", Toast.LENGTH_SHORT).show()
         }
@@ -1732,7 +1788,15 @@ class MainActivity : AppCompatActivity() {
         handler.post(updateSeekBarRunnable as Runnable)
     }
 
-    private fun loadLyrics(song: Song) {
+    private fun loadLyrics(song: Song, parseLyrics: Boolean = true) {
+        if (!parseLyrics) {
+            // 添加歌曲时不解析歌词，直接返回
+            currentLyrics = emptyList()
+            lyricsView?.setNoLyricsMessage()
+            Log.d(TAG, "跳过歌词解析: ${song.title}")
+            return
+        }
+        
         try {
             val parser = LyricsParser()
             val (lyricsText, lyricLines) = parser.getLyricsForSong(song)
@@ -1953,7 +2017,7 @@ class MainActivity : AppCompatActivity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
                 "com.maka.xiaoxia.UPDATE_ALL_COMPONENTS" -> {
-                    // 收到统一广播，优先使用广播中的数据
+                    // 收到统一广播，优化处理避免重复加载
                     Log.d(TAG, "收到统一广播，准备更新UI")
                     
                     // 从广播获取完整信息
@@ -1970,46 +2034,74 @@ class MainActivity : AppCompatActivity() {
                     Log.d(TAG, "统一广播数据: 索引=$songIndex, 标题=$songTitle, 播放=$isPlaying")
                     
                     if (songIndex >= 0 && songIndex < songList.size) {
-                        // 使用广播中的数据更新状态
+                        // 检查是否需要真正更新（歌曲索引变更或播放状态变更）
+                        val isIndexChanged = currentSongIndex != songIndex
+                        val isPlayStateChanged = this@MainActivity.isPlaying != isPlaying
+                        
+                        // 更新状态
                         currentSongIndex = songIndex
                         this@MainActivity.isPlaying = isPlaying
                         
-                        // 创建新的Song对象更新当前歌曲信息
-                        val updatedSong = Song(
-                            id = songList[songIndex].id,
-                            title = songTitle,
-                            artist = songArtist,
-                            album = songAlbum,
-                            duration = songDuration,
-                            path = songPath,
-                            albumId = songAlbumId
-                        )
+                        // 只在歌曲索引变更时更新完整信息（包括自动切换和手动切换）
+                        if (isIndexChanged) {
+                            val updatedSong = Song(
+                                id = songList[songIndex].id,
+                                title = songTitle,
+                                artist = songArtist,
+                                album = songAlbum,
+                                duration = songDuration,
+                                path = songPath,
+                                albumId = songAlbumId
+                            )
+                            
+                            songList[songIndex] = updatedSong
+                            Log.d(TAG, "从统一广播同步歌曲信息: $songTitle")
+                            updateUIForNewSong() // 完整更新新歌曲信息
+                        } else if (isPlayStateChanged) {
+                            // 仅播放状态变更，最小化更新
+                            updateUIForStateChange()
+                            Log.d(TAG, "仅更新播放状态: $isPlaying")
+                        } else {
+                            // 无实质变化，仅更新进度条
+                            startSeekBarUpdate()
+                            Log.d(TAG, "无实质变化，仅更新进度")
+                        }
                         
-                        // 更新歌曲列表中的对应位置
-                        songList[songIndex] = updatedSong
-                        Log.d(TAG, "从统一广播同步歌曲信息: $songTitle")
-                        
-                        updateUI()
                         Log.d(TAG, "统一广播处理完成，当前歌曲: $songTitle, 索引: $songIndex")
                     } else if (isServiceBound) {
                         // 广播数据不完整，尝试从服务获取
                         musicService?.let { service ->
-                            currentSongIndex = service.getCurrentSongIndex()
-                            this@MainActivity.isPlaying = service.isPlaying()
-                            
+                            val newIndex = service.getCurrentSongIndex()
+                            val newIsPlaying = service.isPlaying()
                             val currentSong = service.getCurrentSong()
-                            if (currentSong != null && currentSongIndex >= 0 && currentSongIndex < songList.size) {
-                                songList[currentSongIndex] = currentSong
-                                Log.d(TAG, "从服务同步歌曲信息: ${currentSong.title}")
+                            
+                            val isIndexChanged = newIndex != currentSongIndex
+                            val isPlayStateChanged = newIsPlaying != this@MainActivity.isPlaying
+                            
+                            currentSongIndex = newIndex
+                            this@MainActivity.isPlaying = newIsPlaying
+                            
+                            if (currentSong != null && newIndex >= 0 && newIndex < songList.size) {
+                                val isSongChanged = songList[newIndex].title != currentSong.title
+                                
+                                if (isSongChanged || isIndexChanged) {
+                                    songList[newIndex] = currentSong
+                                    Log.d(TAG, "从服务同步歌曲信息: ${currentSong.title}")
+                                    updateUI(false) // 恢复UI时不更新小组件
+                                } else if (isPlayStateChanged) {
+                                    updateUIForStateChange()
+                                    Log.d(TAG, "仅更新播放状态（从服务）")
+                                } else {
+                                    startSeekBarUpdate()
+                                }
                             }
                             
-                            updateUI()
                             Log.d(TAG, "统一广播处理完成（从服务），当前歌曲: ${currentSong?.title}, 索引: $currentSongIndex")
                         }
                     } else {
                         // 最后才从SharedPreferences获取
                         loadSavedData()
-                        updateUI()
+                        updateUI(false) // 恢复UI时不更新小组件
                         Log.d(TAG, "服务未绑定，从SharedPreferences更新状态")
                     }
                 }
@@ -2019,8 +2111,8 @@ class MainActivity : AppCompatActivity() {
                     handleLegacyBroadcast()
                 }
                 "com.maka.xiaoxia.PLAYBACK_COMPLETE" -> {
-                    updateUI()
-                    Log.d(TAG, "收到播放完成广播")
+                    updateUIForNewSong()
+                    Log.d(TAG, "收到播放完成广播，更新新歌曲信息")
                 }
             }
         }
@@ -2029,16 +2121,28 @@ class MainActivity : AppCompatActivity() {
             // 兼容旧版本广播处理
             if (isServiceBound) {
                 musicService?.let { service ->
-                    currentSongIndex = service.getCurrentSongIndex()
-                    this@MainActivity.isPlaying = service.isPlaying()
-                    
+                    val newIndex = service.getCurrentSongIndex()
+                    val newIsPlaying = service.isPlaying()
                     val currentSong = service.getCurrentSong()
-                    if (currentSong != null && currentSongIndex >= 0 && currentSongIndex < songList.size) {
-                        songList[currentSongIndex] = currentSong
-                    }
                     
-                    updateUI()
-                    Log.d(TAG, "兼容模式处理完成，当前歌曲: ${currentSong?.title}")
+                    val isIndexChanged = newIndex != currentSongIndex
+                    val isPlayStateChanged = newIsPlaying != this@MainActivity.isPlaying
+                    
+                    currentSongIndex = newIndex
+                    this@MainActivity.isPlaying = newIsPlaying
+                    
+                    if (currentSong != null && newIndex >= 0 && newIndex < songList.size) {
+                        if (isIndexChanged) {
+                            songList[newIndex] = currentSong
+                            updateUIForNewSong()
+                            Log.d(TAG, "兼容模式处理完成，歌曲变更: ${currentSong.title}")
+                        } else if (isPlayStateChanged) {
+                            updateUIForStateChange()
+                            Log.d(TAG, "兼容模式仅更新播放状态: $newIsPlaying")
+                        } else {
+                            startSeekBarUpdate()
+                        }
+                    }
                 }
             }
         }
@@ -2070,16 +2174,28 @@ class MainActivity : AppCompatActivity() {
             // 主动从服务同步当前状态
             if (isServiceBound) {
                 musicService?.let { service ->
-                    currentSongIndex = service.getCurrentSongIndex()
-                    this@MainActivity.isPlaying = service.isPlaying()
-                    
+                    val newIndex = service.getCurrentSongIndex()
+                    val newIsPlaying = service.isPlaying()
                     val currentSong = service.getCurrentSong()
-                    if (currentSong != null && currentSongIndex >= 0 && currentSongIndex < songList.size) {
-                        songList[currentSongIndex] = currentSong
-                    }
                     
-                    updateUI()
-                    Log.d(TAG, "onResume时主动同步状态，当前歌曲: ${currentSong?.title}")
+                    val isIndexChanged = newIndex != currentSongIndex
+                    val isPlayStateChanged = newIsPlaying != this@MainActivity.isPlaying
+                    
+                    currentSongIndex = newIndex
+                    this@MainActivity.isPlaying = newIsPlaying
+                    
+                    if (currentSong != null && newIndex >= 0 && newIndex < songList.size) {
+                                if (isIndexChanged) {
+                                    songList[newIndex] = currentSong
+                                    updateUIForNewSong()
+                                    Log.d(TAG, "onResume时主动同步状态，歌曲变更: ${currentSong.title}")
+                                } else if (isPlayStateChanged) {
+                                    updateUIForStateChange()
+                                    Log.d(TAG, "onResume时仅更新播放状态: $newIsPlaying")
+                                } else {
+                                    startSeekBarUpdate()
+                                }
+                            }
                 }
             } else {
                 // 如果服务未绑定，重新绑定并同步
@@ -2095,16 +2211,27 @@ class MainActivity : AppCompatActivity() {
                                 Log.d(TAG, "服务绑定后同步歌曲列表，共 ${songList.size} 首")
                             }
                             
-                            currentSongIndex = service.getCurrentSongIndex()
-                            this@MainActivity.isPlaying = service.isPlaying()
-                            
+                            val newIndex = service.getCurrentSongIndex()
+                            val newIsPlaying = service.isPlaying()
                             val currentSong = service.getCurrentSong()
-                            if (currentSong != null && currentSongIndex >= 0 && currentSongIndex < songList.size) {
-                                songList[currentSongIndex] = currentSong
-                            }
                             
-                            updateUI()
-                            Log.d(TAG, "重新绑定后同步状态，当前歌曲: ${currentSong?.title}")
+                            val isIndexChanged = newIndex != currentSongIndex
+                            val isPlayStateChanged = newIsPlaying != this@MainActivity.isPlaying
+                            
+                            currentSongIndex = newIndex
+                            this@MainActivity.isPlaying = newIsPlaying
+                            
+                            if (currentSong != null && newIndex >= 0 && newIndex < songList.size) {
+                                if (isIndexChanged) {
+                                    songList[newIndex] = currentSong
+                                    updateUIForNewSong()
+                                    Log.d(TAG, "重新绑定后同步状态，歌曲变更: ${currentSong.title}")
+                                } else if (isPlayStateChanged) {
+                                    updateUIForStateChange()
+                                } else {
+                                    startSeekBarUpdate()
+                                }
+                            }
                         }
                     }
                 }, 300)

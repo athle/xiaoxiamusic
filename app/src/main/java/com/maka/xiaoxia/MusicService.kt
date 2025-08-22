@@ -22,8 +22,6 @@ import android.os.Build
 import android.media.AudioManager
 import android.view.KeyEvent
 import java.io.IOException
-import com.maka.xiaoxia.CarMediaSessionManager
-import com.maka.xiaoxia.ColorOS15MediaSessionManager
 
 class MusicService : Service() {
     
@@ -35,9 +33,7 @@ class MusicService : Service() {
     private lateinit var sharedPref: SharedPreferences
     private lateinit var audioManager: AudioManager
     private var headsetReceiver: BroadcastReceiver? = null
-    private lateinit var carMediaSessionManager: CarMediaSessionManager
-    private var colorOS15MediaSessionManager: ColorOS15MediaSessionManager? = null
-    private var vivoMIUIMediaSessionManager: VivoMIUIMediaSessionManager? = null
+    private lateinit var unifiedMediaSessionManager: UnifiedMediaSessionManager
     private var playMode = 2 // 0: REPEAT_ONE, 1: PLAY_ORDER, 2: REPEAT_ALL, 3: SHUFFLE
     private var originalSongList: MutableList<Song> = mutableListOf()
     
@@ -91,46 +87,9 @@ class MusicService : Service() {
         // 注册耳机和媒体按钮接收器
         registerMediaButtonReceiver()
         
-        // 智能选择媒体会话管理器 - 避免重复创建会话
-        try {
-            // 根据系统类型选择最合适的媒体会话管理器
-            val systemType = getSystemType()
-            
-            when (systemType) {
-                "coloros15" -> {
-                    // ColorOS 15使用专用媒体会话管理器
-                    colorOS15MediaSessionManager = ColorOS15MediaSessionManager(this)
-                    colorOS15MediaSessionManager?.createMediaSession()
-                    Log.d("MusicService", "使用ColorOS 15专用媒体会话")
-                }
-                "vivo_miui" -> {
-                    // vivo MIUI使用专用媒体会话管理器
-                    vivoMIUIMediaSessionManager = VivoMIUIMediaSessionManager(this)
-                    if (vivoMIUIMediaSessionManager?.isVivoMIUISystem() == true) {
-                        vivoMIUIMediaSessionManager?.createMediaSession()
-                        Log.d("MusicService", "使用vivo MIUI专用媒体会话")
-                    }
-                }
-                "car" -> {
-                    // 车机系统使用车机媒体会话管理器
-                    carMediaSessionManager = CarMediaSessionManager(this)
-                    carMediaSessionManager.createMediaSession()
-                    Log.d("MusicService", "使用车机媒体会话")
-                }
-                else -> {
-                    // 其他系统使用增强型通知管理器的媒体会话
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                        enhancedMediaNotificationManager = EnhancedMediaNotificationManager(this)
-                        enhancedMediaNotificationManager.createMediaSession()
-                        Log.d("MusicService", "使用增强型媒体会话")
-                    }
-                }
-            }
-            
-            Log.d("MusicService", "媒体会话初始化完成，系统类型: $systemType")
-        } catch (e: Exception) {
-            Log.e("MusicService", "媒体会话初始化失败: ${e.message}")
-        }
+        // 创建统一媒体会话
+        unifiedMediaSessionManager = UnifiedMediaSessionManager(this)
+        unifiedMediaSessionManager.createMediaSession()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -168,6 +127,9 @@ class MusicService : Service() {
         Log.d("MusicService", "服务销毁")
         savePlaybackState()
         
+        // 释放统一媒体会话
+        unifiedMediaSessionManager.releaseMediaSession()
+        
         // 注销耳机接收器
         headsetReceiver?.let {
             unregisterReceiver(it)
@@ -183,17 +145,6 @@ class MusicService : Service() {
         if (::legacyMediaNotificationManager.isInitialized) {
             legacyMediaNotificationManager.cancelNotification()
         }
-        
-        // 释放车机媒体会话
-        if (::carMediaSessionManager.isInitialized) {
-            carMediaSessionManager.releaseMediaSession()
-        }
-        
-        // 释放ColorOS 15媒体会话
-        colorOS15MediaSessionManager?.releaseMediaSession()
-        
-        // 释放vivo MIUI媒体会话
-        vivoMIUIMediaSessionManager?.releaseMediaSession()
         
         mediaPlayer?.release()
         mediaPlayer = null
@@ -369,9 +320,6 @@ class MusicService : Service() {
                 resumeMusic()
             }
         }
-        
-        // 确保状态更新广播被发送
-        updateWidget()
     }
 
     // 添加服务控制接口
@@ -413,15 +361,13 @@ class MusicService : Service() {
             
             Log.d("MusicService", "开始播放: ${song.title}")
             
-            // 更新通知
-            updateNotification()
-            
-            // 更新小组件
-            updateWidget()
+            // 统一更新通知和小组件
+            updateAllComponents()
             
         } catch (e: IOException) {
             Log.e("MusicService", "播放失败: ${e.message}")
             isPlaying = false
+            updateAllComponents()
         }
     }
 
@@ -430,11 +376,8 @@ class MusicService : Service() {
         isPlaying = false
         Log.d("MusicService", "暂停播放")
         
-        // 更新通知
-        updateNotification()
-        
-        // 更新小组件
-        updateWidget()
+        // 统一更新通知和小组件
+        updateAllComponents()
     }
 
     private fun resumeMusic() {
@@ -442,10 +385,13 @@ class MusicService : Service() {
         isPlaying = true
         Log.d("MusicService", "继续播放")
         
-        // 更新通知
+        // 统一更新通知和小组件
+        updateAllComponents()
+    }
+
+    private fun updateAllComponents() {
+        savePlaybackState()
         updateNotification()
-        
-        // 更新小组件
         updateWidget()
     }
 
@@ -454,7 +400,6 @@ class MusicService : Service() {
         
         when (playMode) {
             0 -> { // REPEAT_ONE: 循环播放当前1首歌曲
-                // 保持在当前歌曲
                 playMusicInternal(currentSongIndex)
             }
             1 -> { // PLAY_ORDER: 顺序播放完整个播放列表不循环
@@ -462,7 +407,6 @@ class MusicService : Service() {
                     currentSongIndex++
                     playMusicInternal(currentSongIndex)
                 } else {
-                    // 到达列表末尾，停止播放
                     stopPlaybackInternal()
                 }
             }
@@ -487,7 +431,6 @@ class MusicService : Service() {
         
         when (playMode) {
             0 -> { // REPEAT_ONE: 循环播放当前1首歌曲
-                // 保持在当前歌曲
                 playMusicInternal(currentSongIndex)
             }
             1 -> { // PLAY_ORDER: 顺序播放完整个播放列表不循环
@@ -495,7 +438,6 @@ class MusicService : Service() {
                     currentSongIndex--
                     playMusicInternal(currentSongIndex)
                 } else {
-                    // 到达列表开头，保持在第一首
                     currentSongIndex = 0
                     playMusicInternal(currentSongIndex)
                 }
@@ -529,14 +471,9 @@ class MusicService : Service() {
                 
                 Log.d("MusicService", "停止播放")
                 
-                // 更新通知
+                // 统一更新所有组件
                 stopForeground(true)
-                
-                // 更新小组件
-                updateWidget()
-                
-                // 保存状态
-                savePlaybackState()
+                updateAllComponents()
             }
         } catch (e: Exception) {
             Log.e("MusicService", "停止播放失败: ${e.message}")
@@ -711,13 +648,13 @@ class MusicService : Service() {
                 albumArt
             )
             
-            // 更新ColorOS 15系统控制中心媒体会话（保留此功能）
-            colorOS15MediaSessionManager?.updatePlaybackState(
+            // 使用统一媒体会话更新播放状态
+            unifiedMediaSessionManager.updatePlaybackState(
                 isPlaying,
                 getCurrentPosition().toLong(),
                 getDuration().toLong()
             )
-            colorOS15MediaSessionManager?.updateMediaMetadata(
+            unifiedMediaSessionManager.updateMediaMetadata(
                 song.title,
                 song.artist,
                 song.album ?: "未知专辑",
@@ -757,9 +694,19 @@ class MusicService : Service() {
                 albumArt
             )
             
-            if (::carMediaSessionManager.isInitialized && songList.isNotEmpty()) {
-                carMediaSessionManager.updatePlaybackState(isPlaying, song.title, song.artist, getCurrentPosition().toLong(), getDuration().toLong())
-            }
+            // 使用统一媒体会话更新播放状态
+            unifiedMediaSessionManager.updatePlaybackState(
+                isPlaying,
+                getCurrentPosition().toLong(),
+                getDuration().toLong()
+            )
+            unifiedMediaSessionManager.updateMediaMetadata(
+                song.title,
+                song.artist,
+                song.album ?: "未知专辑",
+                getDuration().toLong(),
+                albumArt
+            )
             
             val notification = enhancedMediaNotificationManager.createMediaNotification(
                 song.title, song.artist, song.album ?: "未知专辑", isPlaying, albumArt, getDuration().toLong(), getCurrentPosition().toLong()
@@ -823,33 +770,13 @@ class MusicService : Service() {
                 }
             }
 
-            // 更新车机媒体会话状态
-            if (::carMediaSessionManager.isInitialized && songList.isNotEmpty()) {
-                val song = songList[currentSongIndex]
-                carMediaSessionManager.updatePlaybackState(isPlaying, song.title, song.artist, getCurrentPosition().toLong(), getDuration().toLong())
-            }
-            
-            // 更新ColorOS 15系统控制中心媒体会话
-            colorOS15MediaSessionManager?.updatePlaybackState(
+            // 使用统一媒体会话更新播放状态
+            unifiedMediaSessionManager.updatePlaybackState(
                 isPlaying,
                 getCurrentPosition().toLong(),
                 getDuration().toLong()
             )
-            colorOS15MediaSessionManager?.updateMediaMetadata(
-                song.title,
-                song.artist,
-                song.album ?: "未知专辑",
-                getDuration().toLong(),
-                albumArt
-            )
-            
-            // 更新vivo MIUI系统控制中心媒体会话
-            vivoMIUIMediaSessionManager?.updatePlaybackState(
-                isPlaying,
-                getCurrentPosition().toLong(),
-                getDuration().toLong()
-            )
-            vivoMIUIMediaSessionManager?.updateMediaMetadata(
+            unifiedMediaSessionManager.updateMediaMetadata(
                 song.title,
                 song.artist,
                 song.album ?: "未知专辑",
@@ -885,28 +812,20 @@ class MusicService : Service() {
             putExtra("cover_path", currentSong?.path ?: "")
             putExtra("cover_album_id", currentSong?.albumId ?: 0L)
             
+            // 播放列表信息
+            putExtra("current_song_index", currentSongIndex)
+            putExtra("song_count", songList.size)
+            
             // 广播标识和时间戳
             putExtra("update_timestamp", System.currentTimeMillis())
             putExtra("broadcast_type", "unified_update")
         }
         
-        // 发送统一广播给所有组件
+        // 发送统一广播给所有组件（合并所有更新）
         sendBroadcast(unifiedBroadcastData)
-        Log.d("MusicService", "已发送统一广播，歌曲: ${currentSong?.title}, 索引: $currentSongIndex")
         
-        // 发送系统小组件更新广播（兼容旧版本）
-        val widgetUpdateIntent = Intent(AppWidgetManager.ACTION_APPWIDGET_UPDATE).apply {
-            component = ComponentName(this@MusicService, MusicWidgetProvider::class.java)
-        }
-        sendBroadcast(widgetUpdateIntent)
-        
-        // 发送车机专用广播（兼容旧版本）
-        val carWidgetUpdateIntent = Intent("com.maka.xiaoxia.action.UPDATE_CAR_WIDGET")
-        sendBroadcast(carWidgetUpdateIntent)
-        
-        // 发送车机低内存版广播（兼容旧版本）
-        val carWidgetLowMemoryUpdateIntent = Intent("com.maka.xiaoxia.action.UPDATE_CAR_WIDGET_LOW_MEMORY")
-        sendBroadcast(carWidgetLowMemoryUpdateIntent)
+        // 调试日志
+        Log.d("MusicService", "发送统一广播: 标题=${currentSong?.title}, 索引=$currentSongIndex, 总数=${songList.size}")
     }
     
     // 添加服务绑定功能
@@ -980,8 +899,6 @@ class MusicService : Service() {
         if (songList.isNotEmpty() && currentSongIndex < songList.size) songList[currentSongIndex] else null
     
     fun getSongList(): List<Song> = songList
-    
-
     
     fun getCurrentSongIndex(): Int = currentSongIndex
     
@@ -1065,17 +982,17 @@ class MusicService : Service() {
             1 -> { // PLAY_ORDER: 顺序播放 - 播放下一首，如果到达末尾则停止
                 if (currentSongIndex < songList.size - 1) {
                     currentSongIndex++
+                    Log.d("MusicService", "播放完成-顺序播放: 切换到索引 $currentSongIndex")
                     playMusicInternal(currentSongIndex)
                 } else {
-                    Log.d("MusicService", "到达播放列表末尾，停止播放")
+                    Log.d("MusicService", "播放完成-到达列表末尾，停止播放")
                     isPlaying = false
-                    updateNotification()
-                    updateWidget()
-                    savePlaybackState()
+                    updateAllComponents()
                 }
             }
             2 -> { // REPEAT_ALL: 列表循环 - 播放下一首，循环到开头
                 currentSongIndex = (currentSongIndex + 1) % songList.size
+                Log.d("MusicService", "播放完成-列表循环: 切换到索引 $currentSongIndex")
                 playMusicInternal(currentSongIndex)
             }
             3 -> { // SHUFFLE: 随机播放 - 随机选择下一首歌曲
@@ -1084,88 +1001,10 @@ class MusicService : Service() {
                     do {
                         currentSongIndex = (0 until songList.size).random()
                     } while (currentSongIndex == oldIndex)
+                    Log.d("MusicService", "播放完成-随机播放: 切换到索引 $currentSongIndex")
                 }
                 playMusicInternal(currentSongIndex)
             }
-        }
-    }
-    
-    // 智能检测系统类型，避免媒体会话重复创建
-    private fun getSystemType(): String {
-        return try {
-            // 检测ColorOS 15
-            if (isColorOS15()) {
-                "coloros15"
-            }
-            // 检测vivo MIUI
-            else if (isVivoMIUISystem()) {
-                "vivo_miui"
-            }
-            // 检测车机系统
-            else if (isCarSystem()) {
-                "car"
-            }
-            // 默认使用标准系统
-            else {
-                "standard"
-            }
-        } catch (e: Exception) {
-            Log.e("MusicService", "系统检测失败: ${e.message}")
-            "standard"
-        }
-    }
-    
-    // 检测是否为ColorOS 15
-    private fun isColorOS15(): Boolean {
-        return try {
-            val osVersion = Build.VERSION.INCREMENTAL
-            val manufacturer = Build.MANUFACTURER.lowercase()
-            val brand = Build.BRAND.lowercase()
-            
-            // OPPO/Realme/OnePlus设备且包含ColorOS 15特征
-            (manufacturer.contains("oppo") || manufacturer.contains("realme") || 
-             manufacturer.contains("oneplus") || brand.contains("oppo") || 
-             brand.contains("realme") || brand.contains("oneplus")) && 
-            (osVersion.contains("coloros15") || osVersion.contains("coloros_15") || 
-             osVersion.contains("15.0") || osVersion.contains("15.1"))
-        } catch (e: Exception) {
-            false
-        }
-    }
-    
-    // 检测是否为vivo MIUI系统
-    private fun isVivoMIUISystem(): Boolean {
-        return try {
-            val manufacturer = Build.MANUFACTURER.lowercase()
-            val brand = Build.BRAND.lowercase()
-            
-            // vivo设备
-            manufacturer.contains("vivo") || brand.contains("vivo") ||
-            // MIUI系统检测
-            Build.HOST.contains("miui") || Build.MANUFACTURER.contains("Xiaomi")
-        } catch (e: Exception) {
-            false
-        }
-    }
-    
-    // 检测是否为车机系统
-    private fun isCarSystem(): Boolean {
-        return try {
-            // 车机系统特征检测
-            val features = packageManager.systemAvailableFeatures
-            val hasCarFeature = features.any { 
-                it.name?.contains("android.hardware.type.automotive") == true 
-            }
-            
-            val manufacturer = Build.MANUFACTURER.lowercase()
-            val model = Build.MODEL.lowercase()
-            
-            hasCarFeature || 
-            manufacturer.contains("car") || 
-            model.contains("car") || 
-            model.contains("automotive")
-        } catch (e: Exception) {
-            false
         }
     }
 }
